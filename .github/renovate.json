@@ -1,0 +1,59 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "dependencyDashboard": true,
+  "extends": [
+    "helpers:pinGitHubActionDigests"
+  ],
+  "labels": ["dependencies"],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true
+  },
+  "vulnerabilityAlerts": {
+    "labels": ["dependencies", "security"]
+  },
+  "customManagers": [
+    {
+      "description": "Track the scrcpy server version pinned in the web postinstall hook (fetch-scrcpy-server <ver>).",
+      "customType": "regex",
+      "managerFilePatterns": ["/^web/package\\.json$/"],
+      "matchStrings": ["fetch-scrcpy-server (?<currentValue>[0-9.]+)"],
+      "depNameTemplate": "Genymobile/scrcpy",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.+)$"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Tango isn't API-stable: group all @yume-chan/* together, keep exact pins, and always review by hand (read the .d.ts before merging).",
+      "matchPackageNames": ["@yume-chan/*"],
+      "groupName": "Tango (@yume-chan)",
+      "rangeStrategy": "pin",
+      "automerge": false,
+      "labels": ["dependencies", "tango", "needs-manual-review"]
+    },
+    {
+      "description": "React core + its types move in lockstep.",
+      "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"],
+      "groupName": "React"
+    },
+    {
+      "description": "Web tooling (non-runtime) — safe to automerge minor/patch.",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true
+    },
+    {
+      "description": "Rust proxy crates in one PR.",
+      "matchManagers": ["cargo"],
+      "groupName": "proxy crates"
+    },
+    {
+      "description": "scrcpy server binary is hardcoded in the web postinstall hook and must stay compatible with @yume-chan/scrcpy — surface it on the dashboard, never auto-open a PR.",
+      "matchDepNames": ["Genymobile/scrcpy"],
+      "dependencyDashboardApproval": true,
+      "labels": ["dependencies", "scrcpy", "needs-manual-review"]
+    }
+  ]
+}

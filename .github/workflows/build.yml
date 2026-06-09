@@ -1,0 +1,30 @@
+name: 'Build'
+
+on:
+  push:
+    tags: [ '*.*.*' ]
+
+concurrency:
+  group: docker-${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: web
+            context: web
+          - image: proxy
+            context: proxy
+    uses: 'trexx/actions/.github/workflows/build.yml@main'
+    secrets: 'inherit'
+    permissions:
+      contents: read
+      packages: write
+    with:
+      prune_images: false
+      context: ${{ matrix.context }}
+      image: ${{ matrix.image }}
