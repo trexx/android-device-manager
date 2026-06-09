@@ -1,0 +1,25 @@
+[package]
+name = "adb-ws-proxy"
+version = "0.1.0"
+edition = "2024"
+description = "Stateless WebSocket-to-TCP relay for ADB over the network"
+license = "MIT"
+
+# Minimal dependency footprint (hard project constraint):
+#   tokio              - async runtime + TcpListener/TcpStream + Semaphore
+#   tokio-tungstenite  - WebSocket framing (re-exports `tungstenite`)
+#   futures-util       - the Stream/Sink extension traits (.split/.next/.send)
+#                        required to drive tokio-tungstenite's WebSocketStream;
+#                        already a transitive dep of tokio-tungstenite, so it
+#                        adds no new crates to the build graph.
+# Everything else (TLS, CIDR parsing, config) is stdlib or handled by a reverse
+# proxy in front. TLS is intentionally out of the binary (front it with Caddy).
+[dependencies]
+futures-util = { version = "0.3.32", default-features = false, features = ["std", "sink"] }
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "net", "io-util", "sync"] }
+tokio-tungstenite = "0.29.0"
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
