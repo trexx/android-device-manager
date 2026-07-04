@@ -11,7 +11,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b",
-    "postinstall": "fetch-scrcpy-server 3.3.3"
+    "postinstall": "fetch-scrcpy-server 3.3.4"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
