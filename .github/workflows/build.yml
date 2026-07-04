@@ -27,4 +27,4 @@ jobs:
     with:
       prune_images: false
       context: ${{ matrix.context }}
-      image: ${{ matrix.image }}
+      images: ghcr.io/${{ github.repository }}-${{ matrix.image }}
