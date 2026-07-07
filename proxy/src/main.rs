@@ -13,10 +13,17 @@
 //!
 //! Kubernetes probes (`/healthz`, `/readyz`, `/startupz`) are unauthenticated,
 //! plain-text, and served on the same port as the WebSocket endpoint.
+//!
+//! One optional stateful extra: `/bookmarks` (enabled by `BOOKMARKS_PATH`)
+//! persists a small JSON document of saved devices so the UI's favorites roam
+//! across browsers — see `bookmarks.rs`.
+
+mod bookmarks;
 
 use std::collections::HashMap;
 use std::env;
 use std::net::{IpAddr, SocketAddr};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use futures_util::{SinkExt, StreamExt};
@@ -43,6 +50,8 @@ struct Config {
     max_connections: usize,
     /// Fixed target for the `/adb-server` relay (an `adb server` smart-socket port).
     adb_server_addr: String,
+    /// Where `/bookmarks` persists its JSON document; `None` disables the endpoint.
+    bookmarks_path: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -77,6 +86,10 @@ async fn main() {
         "  adb-server target: {} (/adb-server)",
         config.adb_server_addr
     );
+    match &config.bookmarks_path {
+        Some(path) => eprintln!("  bookmarks: {} (/bookmarks)", path.display()),
+        None => eprintln!("  bookmarks: (disabled — set BOOKMARKS_PATH to enable)"),
+    }
 
     let permits = Arc::new(Semaphore::new(config.max_connections));
 
@@ -143,6 +156,12 @@ fn load_config() -> Result<Config, String> {
     let adb_server_addr =
         env::var("ADB_SERVER_ADDR").unwrap_or_else(|_| "127.0.0.1:5037".to_string());
 
+    let bookmarks_path = env::var("BOOKMARKS_PATH")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+
     Ok(Config {
         listen_addr,
         auth_token,
@@ -150,6 +169,7 @@ fn load_config() -> Result<Config, String> {
         allowed_origins,
         max_connections,
         adb_server_addr,
+        bookmarks_path,
     })
 }
 
@@ -273,6 +293,7 @@ async fn handle_connection(
         }
         "/connect" => handle_connect(stream, peer, config, permits, request).await,
         "/adb-server" => handle_adb_server(stream, peer, config, permits, request).await,
+        "/bookmarks" => bookmarks::handle(stream, peer, config, request).await,
         _ => write_response(&mut stream, "404 Not Found", "not found\n").await,
     }
 }
@@ -285,8 +306,27 @@ async fn reject(
     status: &str,
     body: &str,
 ) -> std::io::Result<()> {
+    reject_with_headers(stream, peer, status, &[], body).await
+}
+
+/// `reject` with extra response headers — `/bookmarks` errors carry CORS
+/// headers so the browser is allowed to read the status code.
+async fn reject_with_headers(
+    stream: &mut TcpStream,
+    peer: SocketAddr,
+    status: &str,
+    extra_headers: &[(&str, String)],
+    body: &str,
+) -> std::io::Result<()> {
     eprintln!("[{peer}] reject {status}: {}", body.trim_end());
-    write_response(stream, status, body).await
+    write_response_full(
+        stream,
+        status,
+        "text/plain; charset=utf-8",
+        extra_headers,
+        body.as_bytes(),
+    )
+    .await
 }
 
 /// Validate method, WebSocket upgrade, optional Origin allowlist, and auth token —
@@ -329,20 +369,40 @@ async fn precheck_ws(
     };
 
     // Optional Origin allowlist (CORS for WebSocket = validate the Origin header).
-    if let Some(allowed) = &config.allowed_origins {
-        let origin = request
-            .headers
-            .get("origin")
-            .map(String::as_str)
-            .unwrap_or("");
-        if !allowed.iter().any(|candidate| candidate == origin) {
-            reject(stream, peer, "403 Forbidden", "origin not allowed\n").await?;
-            return Ok(None);
-        }
+    if !origin_allowed(request, config) {
+        reject(stream, peer, "403 Forbidden", "origin not allowed\n").await?;
+        return Ok(None);
     }
 
-    // Auth: `Authorization: Bearer <token>` or `?token=<token>`. Browsers can't
-    // set request headers on a WebSocket, so the query param is the usual path.
+    if !authorized(request, config) {
+        reject(stream, peer, "401 Unauthorized", "unauthorized\n").await?;
+        return Ok(None);
+    }
+
+    Ok(Some(ws_key))
+}
+
+/// When `ALLOWED_ORIGIN` is configured the `Origin` header must match one of
+/// the entries exactly (a missing header is rejected); with no allowlist any
+/// origin passes. Shared by the WebSocket endpoints and `/bookmarks`.
+fn origin_allowed(request: &Request, config: &Config) -> bool {
+    match &config.allowed_origins {
+        Some(allowed) => {
+            let origin = request
+                .headers
+                .get("origin")
+                .map(String::as_str)
+                .unwrap_or("");
+            allowed.iter().any(|candidate| candidate == origin)
+        }
+        None => true,
+    }
+}
+
+/// Auth: `Authorization: Bearer <token>` or `?token=<token>`, compared in
+/// constant time. Browsers can't set request headers on a WebSocket, so the
+/// query param is the usual path there; `fetch()` callers use the header.
+fn authorized(request: &Request, config: &Config) -> bool {
     let provided_token = request
         .headers
         .get("authorization")
@@ -351,18 +411,10 @@ async fn precheck_ws(
                 .strip_prefix("Bearer ")
                 .or_else(|| value.strip_prefix("bearer "))
         })
-        .map(str::to_string)
-        .or_else(|| request.query.get("token").cloned());
-    let authorized = provided_token
-        .as_deref()
+        .or_else(|| request.query.get("token").map(String::as_str));
+    provided_token
         .map(|token| constant_time_eq(token.as_bytes(), config.auth_token.as_bytes()))
-        .unwrap_or(false);
-    if !authorized {
-        reject(stream, peer, "401 Unauthorized", "unauthorized\n").await?;
-        return Ok(None);
-    }
-
-    Ok(Some(ws_key))
+        .unwrap_or(false)
 }
 
 /// Acquire a connection permit, connect to `target`, complete the WebSocket
@@ -615,11 +667,38 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 }
 
 async fn write_response(stream: &mut TcpStream, status: &str, body: &str) -> std::io::Result<()> {
-    let response = format!(
-        "HTTP/1.1 {status}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+    write_response_full(
+        stream,
+        status,
+        "text/plain; charset=utf-8",
+        &[],
+        body.as_bytes(),
+    )
+    .await
+}
+
+/// `write_response` with a caller-chosen content type and extra headers —
+/// `/bookmarks` needs `application/json` bodies and CORS headers.
+async fn write_response_full(
+    stream: &mut TcpStream,
+    status: &str,
+    content_type: &str,
+    extra_headers: &[(&str, String)],
+    body: &[u8],
+) -> std::io::Result<()> {
+    let mut response = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n",
         body.len()
     );
+    for (name, value) in extra_headers {
+        response.push_str(name);
+        response.push_str(": ");
+        response.push_str(value);
+        response.push_str("\r\n");
+    }
+    response.push_str("\r\n");
     stream.write_all(response.as_bytes()).await?;
+    stream.write_all(body).await?;
     stream.flush().await
 }
 
@@ -677,5 +756,74 @@ async fn relay(ws: WebSocketStream<TcpStream>, tcp: TcpStream) {
     tokio::select! {
         _ = client_to_server => {}
         _ = server_to_client => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config() -> Config {
+        Config {
+            listen_addr: "127.0.0.1:0".into(),
+            auth_token: "secret".into(),
+            allowed_subnets: default_private_subnets(),
+            allowed_origins: Some(vec!["https://ui.example".into()]),
+            max_connections: 1,
+            adb_server_addr: "127.0.0.1:5037".into(),
+            bookmarks_path: None,
+        }
+    }
+
+    fn request(headers: &[(&str, &str)], query: &[(&str, &str)]) -> Request {
+        Request {
+            method: "GET".into(),
+            path: "/".into(),
+            query: query
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            headers: headers
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn authorized_accepts_bearer_header_or_query_param() {
+        let config = test_config();
+        assert!(authorized(
+            &request(&[("authorization", "Bearer secret")], &[]),
+            &config
+        ));
+        assert!(authorized(&request(&[], &[("token", "secret")]), &config));
+        assert!(!authorized(
+            &request(&[("authorization", "Bearer wrong")], &[]),
+            &config
+        ));
+        assert!(!authorized(&request(&[], &[("token", "")]), &config));
+        assert!(!authorized(&request(&[], &[]), &config));
+    }
+
+    #[test]
+    fn origin_allowlist_requires_exact_match_when_configured() {
+        let config = test_config();
+        assert!(origin_allowed(
+            &request(&[("origin", "https://ui.example")], &[]),
+            &config
+        ));
+        assert!(!origin_allowed(
+            &request(&[("origin", "https://evil.example")], &[]),
+            &config
+        ));
+        // A missing Origin header is rejected while an allowlist is set...
+        assert!(!origin_allowed(&request(&[], &[]), &config));
+        // ...and anything goes when it isn't.
+        let open = Config {
+            allowed_origins: None,
+            ..test_config()
+        };
+        assert!(origin_allowed(&request(&[], &[]), &open));
     }
 }

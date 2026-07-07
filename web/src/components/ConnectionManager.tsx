@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdbDaemonWebUsbDevice } from "@yume-chan/adb-daemon-webusb";
-import type { AdbServerClient } from "@yume-chan/adb";
+import type { Adb, AdbServerClient } from "@yume-chan/adb";
 import { useDevices } from "../context/DeviceContext";
+import { useProxy } from "../context/ProxyContext";
 import {
   connectUsb,
   getAuthorizedUsbDevices,
@@ -10,42 +11,54 @@ import {
 } from "../lib/usb-transport";
 import { connectNetwork } from "../lib/ws-transport";
 import { createServerClient } from "../lib/adb-server-transport";
+import { useBookmarks } from "../lib/bookmarks";
+import type { Bookmark, BookmarkKind, BookmarksStore } from "../lib/bookmarks";
 
+// The key predates the shared ProxyContext, so stored blobs may still carry
+// stale proxyUrl/token fields from the old profile shape — they're ignored
+// (ProxyContext migrated them once) and dropped on the next save.
 const STORAGE_KEY = "adm.network-profile";
 
-interface NetworkProfile {
-  proxyUrl: string;
+interface NetworkTarget {
   host: string;
   port: string;
-  token: string;
 }
 
-const DEFAULT_PROFILE: NetworkProfile = {
-  proxyUrl: "ws://localhost:8080",
+const DEFAULT_TARGET: NetworkTarget = {
   host: "",
   port: "5555",
-  token: "",
 };
 
-function loadProfile(): NetworkProfile {
+function loadTarget(): NetworkTarget {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      return { ...DEFAULT_PROFILE, ...(JSON.parse(raw) as Partial<NetworkProfile>) };
+      const stored = JSON.parse(raw) as Partial<NetworkTarget>;
+      return {
+        host: stored.host ?? DEFAULT_TARGET.host,
+        port: stored.port ?? DEFAULT_TARGET.port,
+      };
     }
   } catch {
     // Ignore malformed storage.
   }
-  return DEFAULT_PROFILE;
+  return DEFAULT_TARGET;
 }
 
 export function ConnectionManager() {
   const { devices, addDevice } = useDevices();
+  const { proxy } = useProxy();
   const usbSupported = isWebUsbSupported();
+
+  // The one bookmarks store instance for the whole panel; children receive it
+  // via props so they all see the same state.
+  const store = useBookmarks(proxy.proxyUrl.trim(), proxy.token);
 
   return (
     <div className="connection-manager">
       <div className="conn-sections">
+        <ProxySection />
+        <FavoritesSection store={store} devices={devices} addDevice={addDevice} />
         {usbSupported ? (
           <UsbConnect devices={devices} addDevice={addDevice} />
         ) : (
@@ -58,15 +71,209 @@ export function ConnectionManager() {
             </p>
           </section>
         )}
-        <NetworkConnect devices={devices} addDevice={addDevice} />
-        <ServerConnect devices={devices} addDevice={addDevice} />
+        <NetworkConnect devices={devices} addDevice={addDevice} store={store} />
+        <ServerConnect devices={devices} addDevice={addDevice} store={store} />
       </div>
     </div>
   );
 }
 
+/** The shared relay endpoint: URL + auth token, entered once and used by the
+ *  Network, ADB-server, and Favorites sections alike. */
+function ProxySection() {
+  const { proxy, setProxy } = useProxy();
+
+  return (
+    <section className="conn-section">
+      <h2>Proxy</h2>
+      <div className="net-form">
+        <label>
+          <span>Proxy URL</span>
+          <input
+            type="text"
+            value={proxy.proxyUrl}
+            onChange={(e) => setProxy({ proxyUrl: e.target.value })}
+            placeholder="ws://localhost:8080"
+          />
+        </label>
+        <label>
+          <span>Auth token</span>
+          <input
+            type="password"
+            value={proxy.token}
+            onChange={(e) => setProxy({ token: e.target.value })}
+            placeholder="shared secret"
+          />
+        </label>
+      </div>
+      <p className="hint muted">
+        The token must match the proxy's <code>AUTH_TOKEN</code>. Use{" "}
+        <code>wss://</code> in production — WebUSB and clipboard need a secure
+        origin anyway. Saved in this browser only.
+      </p>
+    </section>
+  );
+}
+
 type Devices = ReturnType<typeof useDevices>["devices"];
 type AddDevice = ReturnType<typeof useDevices>["addDevice"];
+
+// ---- Server-side favorites -------------------------------------------------
+
+function parsePort(value: string): number | null {
+  const port = Number(value);
+  return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : null;
+}
+
+/** Shared ☆ Save flow: validate, prompt for a name, persist. Returns the
+ *  message for `setError` (null on success or cancel). */
+function promptSaveFavorite(
+  store: BookmarksStore,
+  kind: BookmarkKind,
+  rawHost: string,
+  rawPort: string,
+): string | null {
+  const host = rawHost.trim();
+  const port = parsePort(rawPort);
+  if (!host || port === null) {
+    return "Enter the device IP and port before saving.";
+  }
+  const name = window.prompt("Name this device", host);
+  if (!name?.trim()) return null;
+  store.save({ name: name.trim(), kind, host, port });
+  return null;
+}
+
+function FavoritesSection({
+  store,
+  devices,
+  addDevice,
+}: {
+  store: BookmarksStore;
+  devices: Devices;
+  addDevice: AddDevice;
+}) {
+  const { state } = store;
+  const { proxy } = useProxy();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const connect = useCallback(
+    async (bookmark: Bookmark) => {
+      const proxyUrl = proxy.proxyUrl.trim();
+      const token = proxy.token;
+      const target = `${bookmark.host}:${bookmark.port}`;
+      if (devices.some((d) => d.id === target)) {
+        setError(`${target} is already connected.`);
+        return;
+      }
+      setBusyId(bookmark.id);
+      setError(null);
+      try {
+        let adb: Adb;
+        if (bookmark.kind === "direct") {
+          adb = await connectNetwork({
+            proxyUrl,
+            host: bookmark.host,
+            port: bookmark.port,
+            token,
+          });
+        } else {
+          // The adb server behind the relay does the wireless connect, then
+          // hands us a transport for the resulting `ip:port` serial.
+          const client = createServerClient({ proxyUrl, token });
+          await client.wireless.connect(target);
+          adb = await client.createAdb({ serial: target });
+        }
+        addDevice({
+          id: target,
+          label: `${bookmark.name} (${target})`,
+          adb,
+          transport: adb.transport,
+          mode: "network",
+        });
+        store.touch(bookmark.id);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [devices, addDevice, proxy, store],
+  );
+
+  const bookmarks = useMemo(
+    () =>
+      [...state.bookmarks].sort(
+        (a, b) =>
+          (b.lastConnected ?? "").localeCompare(a.lastConnected ?? "") ||
+          a.name.localeCompare(b.name),
+      ),
+    [state.bookmarks],
+  );
+
+  // Hidden until a proxy is configured; hidden entirely when the proxy has no
+  // bookmark storage (the rest of the UI works as before).
+  if (!store.available) {
+    return null;
+  }
+
+  return (
+    <section className="conn-section">
+      <h2>Favorites</h2>
+      {bookmarks.length === 0 && state.status === "ready" && (
+        <p className="muted">
+          No saved devices yet. Connect below, then hit <strong>☆ Save</strong>.
+        </p>
+      )}
+      {bookmarks.length > 0 && (
+        <div className="favorites">
+          {bookmarks.map((b) => {
+            const target = `${b.host}:${b.port}`;
+            const added = devices.some((d) => d.id === target);
+            return (
+              <div key={b.id} className="favorite">
+                <span className="favorite-name" title={target}>
+                  {b.name}
+                </span>
+                <span className="favorite-target">{target}</span>
+                <span className={`kind-badge kind-${b.kind}`}>{b.kind}</span>
+                <button
+                  onClick={() => connect(b)}
+                  disabled={busyId !== null || added}
+                  title={b.kind === "direct" ? "Reconnect via /connect" : "Reconnect via the adb server"}
+                >
+                  {added ? "Added" : busyId === b.id ? "Connecting…" : "Connect"}
+                </button>
+                <button
+                  className="icon"
+                  onClick={() => {
+                    const name = window.prompt("Rename favorite", b.name);
+                    if (name?.trim()) store.rename(b.id, name.trim());
+                  }}
+                  disabled={busyId !== null}
+                  title="Rename"
+                >
+                  ✎
+                </button>
+                <button
+                  className="icon"
+                  onClick={() => store.remove(b.id)}
+                  disabled={busyId !== null}
+                  title="Remove"
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {state.status === "error" && <p className="error">{state.error}</p>}
+      {error && <p className="error">{error}</p>}
+    </section>
+  );
+}
 
 function UsbConnect({ devices, addDevice }: { devices: Devices; addDevice: AddDevice }) {
   const [busy, setBusy] = useState(false);
@@ -156,25 +363,38 @@ function UsbConnect({ devices, addDevice }: { devices: Devices; addDevice: AddDe
   );
 }
 
-function NetworkConnect({ devices, addDevice }: { devices: Devices; addDevice: AddDevice }) {
-  const [profile, setProfile] = useState<NetworkProfile>(loadProfile);
+function NetworkConnect({
+  devices,
+  addDevice,
+  store,
+}: {
+  devices: Devices;
+  addDevice: AddDevice;
+  store: BookmarksStore;
+}) {
+  const { proxy } = useProxy();
+  const [target, setTarget] = useState<NetworkTarget>(loadTarget);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const field = (key: keyof NetworkProfile) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setProfile((p) => ({ ...p, [key]: e.target.value }));
+  const field = (key: keyof NetworkTarget) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setTarget((t) => ({ ...t, [key]: e.target.value }));
 
   const onConnect = useCallback(async () => {
-    const proxyUrl = profile.proxyUrl.trim();
-    const host = profile.host.trim();
-    const token = profile.token;
-    const port = Number(profile.port);
+    const proxyUrl = proxy.proxyUrl.trim();
+    const token = proxy.token;
+    const host = target.host.trim();
+    const port = parsePort(target.port);
 
-    if (!proxyUrl || !host || !token) {
-      setError("Proxy URL, device IP, and token are required.");
+    if (!proxyUrl || !token) {
+      setError("Set the proxy URL and auth token in the Proxy section above.");
       return;
     }
-    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    if (!host) {
+      setError("Device IP is required.");
+      return;
+    }
+    if (port === null) {
       setError("Port must be between 1 and 65535.");
       return;
     }
@@ -188,11 +408,10 @@ function NetworkConnect({ devices, addDevice }: { devices: Devices; addDevice: A
     setError(null);
     try {
       const adb = await connectNetwork({ proxyUrl, host, port, token });
-      // Persist the profile (including the token) for quick reconnects. The
-      // token stays in this browser's localStorage and is never sent anywhere
-      // except to the proxy you configured.
+      // Persist the device target for quick reconnects (the proxy URL + token
+      // are saved separately by ProxyContext).
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...profile, host, port: String(port) }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ host, port: String(port) }));
       } catch {
         // Storage unavailable (private mode); not fatal.
       }
@@ -208,27 +427,21 @@ function NetworkConnect({ devices, addDevice }: { devices: Devices; addDevice: A
     } finally {
       setBusy(false);
     }
-  }, [profile, devices, addDevice]);
+  }, [proxy, target, devices, addDevice]);
+
+  const onSaveFavorite = useCallback(() => {
+    setError(promptSaveFavorite(store, "direct", target.host, target.port));
+  }, [target.host, target.port, store]);
 
   return (
     <section className="conn-section">
       <h2>Network</h2>
       <div className="net-form">
         <label>
-          <span>Proxy URL</span>
-          <input
-            type="text"
-            value={profile.proxyUrl}
-            onChange={field("proxyUrl")}
-            placeholder="ws://localhost:8080"
-            disabled={busy}
-          />
-        </label>
-        <label>
           <span>Device IP</span>
           <input
             type="text"
-            value={profile.host}
+            value={target.host}
             onChange={field("host")}
             placeholder="192.168.1.50"
             disabled={busy}
@@ -239,57 +452,28 @@ function NetworkConnect({ devices, addDevice }: { devices: Devices; addDevice: A
           <input
             type="text"
             inputMode="numeric"
-            value={profile.port}
+            value={target.port}
             onChange={field("port")}
             placeholder="5555"
-            disabled={busy}
-          />
-        </label>
-        <label>
-          <span>Auth token</span>
-          <input
-            type="password"
-            value={profile.token}
-            onChange={field("token")}
-            placeholder="shared secret"
             disabled={busy}
           />
         </label>
         <button className="primary net-connect" onClick={onConnect} disabled={busy}>
           {busy ? "Connecting…" : "Connect"}
         </button>
+        {store.available && (
+          <button className="net-save" onClick={onSaveFavorite} disabled={busy} title="Save as favorite">
+            ☆ Save
+          </button>
+        )}
       </div>
       {error && <p className="error">{error}</p>}
       <p className="hint muted">
-        Enable wireless debugging on the device (<code>adb tcpip 5555</code>) and
-        run the proxy. The token must match the proxy's <code>AUTH_TOKEN</code>.
+        Enable wireless debugging on the device (<code>adb tcpip 5555</code>).
+        Connects through the proxy configured above.
       </p>
     </section>
   );
-}
-
-const SERVER_STORAGE_KEY = "adm.server-profile";
-
-interface ServerProfile {
-  proxyUrl: string;
-  token: string;
-}
-
-const DEFAULT_SERVER_PROFILE: ServerProfile = {
-  proxyUrl: "ws://localhost:8080",
-  token: "",
-};
-
-function loadServerProfile(): ServerProfile {
-  try {
-    const raw = localStorage.getItem(SERVER_STORAGE_KEY);
-    if (raw) {
-      return { ...DEFAULT_SERVER_PROFILE, ...(JSON.parse(raw) as Partial<ServerProfile>) };
-    }
-  } catch {
-    // Ignore malformed storage.
-  }
-  return DEFAULT_SERVER_PROFILE;
 }
 
 type ServerDevice = AdbServerClient.Device;
@@ -299,8 +483,16 @@ type ServerDevice = AdbServerClient.Device;
  * mDNS discovery, and Android 11+ wireless pairing natively; the browser just
  * lists devices and turns one into a transport-agnostic `Adb`.
  */
-function ServerConnect({ devices, addDevice }: { devices: Devices; addDevice: AddDevice }) {
-  const [profile, setProfile] = useState<ServerProfile>(loadServerProfile);
+function ServerConnect({
+  devices,
+  addDevice,
+  store,
+}: {
+  devices: Devices;
+  addDevice: AddDevice;
+  store: BookmarksStore;
+}) {
+  const { proxy } = useProxy();
   const [enabled, setEnabled] = useState(false);
   const [serverDevices, setServerDevices] = useState<readonly ServerDevice[]>([]);
   const [busy, setBusy] = useState(false);
@@ -325,10 +517,10 @@ function ServerConnect({ devices, addDevice }: { devices: Devices; addDevice: Ad
   useEffect(() => stopObserver, [stopObserver]);
 
   const enable = useCallback(async () => {
-    const proxyUrl = profile.proxyUrl.trim();
-    const token = profile.token;
+    const proxyUrl = proxy.proxyUrl.trim();
+    const token = proxy.token;
     if (!proxyUrl || !token) {
-      setError("Relay URL and token are required.");
+      setError("Set the proxy URL and auth token in the Proxy section above.");
       return;
     }
     setBusy(true);
@@ -342,17 +534,12 @@ function ServerConnect({ devices, addDevice }: { devices: Devices; addDevice: Ad
       clientRef.current = client;
       observerRef.current = observer;
       setEnabled(true);
-      try {
-        localStorage.setItem(SERVER_STORAGE_KEY, JSON.stringify(profile));
-      } catch {
-        // Storage unavailable (private mode); not fatal.
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }, [profile]);
+  }, [proxy]);
 
   const disable = useCallback(() => {
     stopObserver();
@@ -436,37 +623,22 @@ function ServerConnect({ devices, addDevice }: { devices: Devices; addDevice: Ad
     }
   }, [connIp, connPort]);
 
+  const saveWireless = useCallback(() => {
+    setError(promptSaveFavorite(store, "wireless", connIp, connPort));
+  }, [connIp, connPort, store]);
+
   if (!enabled) {
     return (
       <section className="conn-section">
         <h2>ADB server</h2>
-        <label>
-          <span>Relay URL</span>
-          <input
-            type="text"
-            value={profile.proxyUrl}
-            placeholder="ws://localhost:8080"
-            onChange={(e) => setProfile((p) => ({ ...p, proxyUrl: e.target.value }))}
-            disabled={busy}
-          />
-        </label>
-        <label>
-          <span>Auth token</span>
-          <input
-            type="password"
-            value={profile.token}
-            placeholder="shared secret"
-            onChange={(e) => setProfile((p) => ({ ...p, token: e.target.value }))}
-            disabled={busy}
-          />
-        </label>
         <button className="primary" onClick={enable} disabled={busy}>
           {busy ? "Connecting…" : "Connect to server"}
         </button>
         {error && <p className="error">{error}</p>}
         <p className="hint muted">
-          Runs against a real <code>adb</code> server behind the relay — it handles
-          USB, discovery, and Android 11+ wireless pairing for you.
+          Runs against a real <code>adb</code> server behind the proxy configured
+          above — it handles USB, discovery, and Android 11+ wireless pairing for
+          you.
         </p>
       </section>
     );
@@ -556,6 +728,11 @@ function ServerConnect({ devices, addDevice }: { devices: Devices; addDevice: Ad
             <button onClick={connectWireless} disabled={busy}>
               Connect
             </button>
+            {store.available && (
+              <button onClick={saveWireless} disabled={busy} title="Save as favorite">
+                ☆ Save
+              </button>
+            )}
           </div>
         </div>
       </details>

@@ -1,5 +1,6 @@
 import { AdbServerClient } from "@yume-chan/adb";
 import type { AdbIncomingSocketHandler } from "@yume-chan/adb";
+import { proxyBase } from "./proxy-url";
 import { openWsByteDuplex } from "./ws-stream";
 
 export interface AdbServerOptions {
@@ -10,7 +11,7 @@ export interface AdbServerOptions {
 }
 
 function buildServerUrl({ proxyUrl, token }: AdbServerOptions): string {
-  const base = proxyUrl.replace(/\/+$/, "");
+  const base = proxyBase(proxyUrl);
   const params = new URLSearchParams({ token });
   return `${base}/adb-server?${params.toString()}`;
 }

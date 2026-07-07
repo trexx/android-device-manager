@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { DeviceProvider, useDevices } from "./context/DeviceContext";
+import { ProxyProvider } from "./context/ProxyContext";
 import { ConnectionManager } from "./components/ConnectionManager";
 import { DeviceSwitcher } from "./components/DeviceSwitcher";
 import { DeviceInfo } from "./components/DeviceInfo";
@@ -102,8 +103,10 @@ function Workspace() {
 
 export function App() {
   return (
-    <DeviceProvider>
-      <Workspace />
-    </DeviceProvider>
+    <ProxyProvider>
+      <DeviceProvider>
+        <Workspace />
+      </DeviceProvider>
+    </ProxyProvider>
   );
 }

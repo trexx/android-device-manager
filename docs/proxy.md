@@ -25,8 +25,9 @@ AUTH_TOKEN=secret ALLOWED_SUBNETS=192.168.0.0/16,10.0.0.0/8 \
 | `AUTH_TOKEN` | _(required)_ | Shared secret for every upgrade. Refuses to start if unset/empty. |
 | `ALLOWED_SUBNETS` | `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` | Comma-separated CIDRs. `/connect` targets must be IP literals inside one of these. |
 | `MAX_CONNECTIONS` | `20` | Concurrent relay cap. `/readyz` returns 503 at capacity. Server mode + scrcpy open several connections, so size accordingly. |
-| `ALLOWED_ORIGIN` | _(unset = any)_ | Comma-separated origins; if set, the WebSocket `Origin` header must match. |
+| `ALLOWED_ORIGIN` | _(unset = any)_ | Comma-separated origins; if set, the `Origin` header must match (WebSocket upgrades and `/bookmarks` alike). |
 | `ADB_SERVER_ADDR` | `127.0.0.1:5037` | Target for the `/adb-server` endpoint (a local `adb` server). |
+| `BOOKMARKS_PATH` | _(unset = disabled)_ | File where `/bookmarks` persists the UI's saved devices (e.g. `/data/bookmarks.json`). The directory must exist and be writable. |
 
 ## Endpoints
 
@@ -39,6 +40,16 @@ sent as `Authorization: Bearer <token>` (browsers can only use the query param).
 WebSocket upgrade that relays to the configured `ADB_SERVER_ADDR` (a local `adb`
 server). No subnet check (fixed target). Used by ADB-server mode; each adb
 smart-socket opens its own WebSocket.
+
+### `GET /bookmarks`, `PUT /bookmarks`
+Plain HTTP (not WebSocket): the UI's favorite devices as one JSON document,
+fetched and replaced wholesale. Enabled only when `BOOKMARKS_PATH` is set
+(`404` otherwise). Same auth as the relays — `Authorization: Bearer <token>`
+or `?token=` — and the same `ALLOWED_ORIGIN` check; CORS preflights are
+answered so the UI can call this cross-origin. The proxy stores the document
+as an opaque, size-capped (64 KiB) blob and writes it atomically (temp file +
+rename); the schema belongs to the UI. `GET` returns
+`{"version":1,"bookmarks":[]}` before the first save.
 
 ### `GET /healthz`, `/readyz`, `/startupz`
 Unauthenticated, plain-text Kubernetes probes:
@@ -65,6 +76,9 @@ problems.
   broader blast radius than `/connect`. Keep the token secret, serve over
   `wss://`, and treat the adb-server host as a trusted control point. Subnet /
   origin allowlists don't constrain this endpoint's target.
+- **`/bookmarks`** — token + origin allowlist. The document holds device names
+  and private IPs (no credentials), so its sensitivity is low, but it is only
+  as private as the token.
 - Always run behind TLS in production (`wss://`); never expose the raw proxy to
   untrusted networks.
 

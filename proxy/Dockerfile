@@ -29,6 +29,8 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Defaults; AUTH_TOKEN is required at runtime. Override ALLOWED_SUBNETS,
 # MAX_CONNECTIONS, ADB_SERVER_ADDR as needed. adb stores its keys under $HOME.
+# Set BOOKMARKS_PATH (e.g. /data/bookmarks.json, on a volume) to enable the
+# /bookmarks favorites store.
 ENV LISTEN_ADDR=0.0.0.0:8080 \
     HOME=/root
 EXPOSE 8080

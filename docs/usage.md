@@ -36,11 +36,10 @@ expose a **plain** ADB port:
 adb tcpip 5555            # over USB once, or over an existing adb session
 ```
 
-Then run the [proxy](./proxy.md) and fill in the **Network** section:
-
-- **Proxy URL** — `ws://localhost:8080` (or `wss://…` in production)
-- **Device IP** + **Port** (5555)
-- **Auth token** — must match the proxy's `AUTH_TOKEN`
+Then run the [proxy](./proxy.md), fill in the shared **Proxy** section once
+(**Proxy URL** — `ws://localhost:8080`, or `wss://…` in production — and
+**Auth token**, which must match the proxy's `AUTH_TOKEN`), and enter the
+**Device IP** + **Port** (5555) in the **Network** section.
 
 `adb tcpip` resets on reboot.
 
@@ -54,9 +53,9 @@ adb start-server          # on the proxy host (or use the proxy Docker image)
 AUTH_TOKEN=secret ./adb-ws-proxy
 ```
 
-In the **ADB server** section: enter the relay URL + token, click **Connect to
-server**, then use *Pair / connect a device* (below). Connected devices appear in
-a live list; click **Connect** on one to open its panels.
+With the **Proxy** section filled in, click **Connect to server** in the
+**ADB server** section, then use *Pair / connect a device* (below). Connected
+devices appear in a live list; click **Connect** on one to open its panels.
 
 ## Wireless pairing
 

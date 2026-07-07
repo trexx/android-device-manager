@@ -69,7 +69,8 @@ is never sent to any server.
 - **USB:** enable USB debugging, run `adb kill-server` first (only one process
   can claim the device), click *Connect via USB*.
 - **Network:** enable wireless debugging on the device (`adb tcpip 5555`), run
-  the proxy (below), then fill in the proxy URL, device IP, port, and token.
+  the proxy (below), fill in the proxy URL + token once in the **Proxy**
+  section, then the device IP and port.
 
 ## Proxy
 

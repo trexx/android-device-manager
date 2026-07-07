@@ -2,6 +2,7 @@ import type { Adb, AdbDaemonConnection } from "@yume-chan/adb";
 import { AdbPacket, AdbPacketSerializeStream } from "@yume-chan/adb";
 import { StructDeserializeStream } from "@yume-chan/stream-extra";
 import { authenticate } from "./adb-manager";
+import { proxyBase } from "./proxy-url";
 import { openWsByteDuplex } from "./ws-stream";
 
 export interface NetworkConnectionOptions {
@@ -16,7 +17,7 @@ export interface NetworkConnectionOptions {
 }
 
 function buildConnectUrl({ proxyUrl, host, port, token }: NetworkConnectionOptions): string {
-  const base = proxyUrl.replace(/\/+$/, "");
+  const base = proxyBase(proxyUrl);
   // Browsers can't set request headers on a WebSocket, so the token rides in
   // the query string; URLSearchParams percent-encodes it for us.
   const params = new URLSearchParams({ host, port: String(port), token });
