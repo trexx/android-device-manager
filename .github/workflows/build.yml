@@ -19,7 +19,7 @@ jobs:
             context: "{{defaultContext}}:web"
           - image: proxy
             context: "{{defaultContext}}:proxy"
-    uses: 'trexx/actions/.github/workflows/build.yml@f2ae29a39f54400280da02eb90e598c392b060b9' # main
+    uses: 'trexx/actions/.github/workflows/build.yml@325c285a4aed8592ae006c2ade0cedcbdd4cf2be' # main
     secrets: 'inherit'
     permissions:
       contents: read
