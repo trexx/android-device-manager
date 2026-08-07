@@ -1,5 +1,10 @@
 # --- Build stage ---------------------------------------------------------
-FROM rust:1-slim AS builder
+# Pinned to -bookworm (not the floating `rust:1-slim`, which tracks whatever
+# Debian release is current upstream) so the builder's glibc never gets ahead
+# of the distroless runtime stage's — distroless/cc-debian12 is bookworm-based
+# (glibc 2.36); a binary built against a newer glibc (e.g. trixie's 2.39)
+# fails to start there with "version `GLIBC_2.39' not found".
+FROM rust:1-slim-bookworm AS builder
 WORKDIR /app
 
 # Cache dependencies separately from source for faster rebuilds.
