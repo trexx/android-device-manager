@@ -29,6 +29,7 @@ use std::sync::Arc;
 use futures_util::{SinkExt, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::process::Command;
 use tokio::sync::Semaphore;
 use tokio_tungstenite::WebSocketStream;
 use tokio_tungstenite::tungstenite::Message;
@@ -63,6 +64,8 @@ async fn main() {
             std::process::exit(1);
         }
     };
+
+    maybe_start_adb_server().await;
 
     let listener = match TcpListener::bind(&config.listen_addr).await {
         Ok(listener) => listener,
@@ -109,6 +112,33 @@ async fn main() {
                 eprintln!("[{peer}] io error: {err}");
             }
         });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// adb server startup
+// ---------------------------------------------------------------------------
+
+/// Best-effort start of a local `adb server` for `/adb-server` mode. Skipped
+/// when `START_ADB_SERVER` is set to anything other than `1` (e.g. because
+/// `ADB_SERVER_ADDR` points at an external server). The runtime image has no
+/// shell, so this replaces what used to be a `docker-entrypoint.sh` wrapper —
+/// `/connect` doesn't need `adb` at all, so a failure here only warns, it
+/// never aborts startup.
+async fn maybe_start_adb_server() {
+    let enabled = env::var("START_ADB_SERVER").unwrap_or_else(|_| "1".to_string()) == "1";
+    if !enabled {
+        return;
+    }
+    match Command::new("adb").arg("start-server").output().await {
+        Ok(output) if output.status.success() => {}
+        Ok(output) => eprintln!(
+            "warning: adb start-server exited with {}; /adb-server mode unavailable",
+            output.status
+        ),
+        Err(err) => {
+            eprintln!("warning: could not start adb server ({err}); /adb-server mode unavailable")
+        }
     }
 }
 

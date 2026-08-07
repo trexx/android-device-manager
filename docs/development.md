@@ -35,7 +35,7 @@ web/
 proxy/
 ├── src/main.rs         # listener, HTTP routing, manual WS handshake, relay
 ├── Cargo.toml, Cargo.lock
-├── Dockerfile, docker-entrypoint.sh
+├── Dockerfile           # multi-stage: build, adb-fetch, distroless runtime
 docs/                   # this documentation
 ```
 

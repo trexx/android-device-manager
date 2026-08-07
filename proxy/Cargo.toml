@@ -6,7 +6,8 @@ description = "Stateless WebSocket-to-TCP relay for ADB over the network"
 license = "MIT"
 
 # Minimal dependency footprint (hard project constraint):
-#   tokio              - async runtime + TcpListener/TcpStream + Semaphore
+#   tokio              - async runtime + TcpListener/TcpStream + Semaphore +
+#                        spawning the local `adb start-server` at boot
 #   tokio-tungstenite  - WebSocket framing (re-exports `tungstenite`)
 #   futures-util       - the Stream/Sink extension traits (.split/.next/.send)
 #                        required to drive tokio-tungstenite's WebSocketStream;
@@ -16,7 +17,7 @@ license = "MIT"
 # proxy in front. TLS is intentionally out of the binary (front it with Caddy).
 [dependencies]
 futures-util = { version = "0.3.32", default-features = false, features = ["std", "sink"] }
-tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "fs"] }
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "fs", "process"] }
 tokio-tungstenite = "0.30.0"
 
 [profile.release]

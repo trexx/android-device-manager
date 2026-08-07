@@ -35,15 +35,24 @@ binary from GitHub).
 
 ### Docker
 
-[`proxy/Dockerfile`](../proxy/Dockerfile) builds the binary and bundles `adb` (so
-ADB-server mode works out of the box); its entrypoint starts a local adb server
-then runs the proxy.
+[`proxy/Dockerfile`](../proxy/Dockerfile) builds the binary and bundles `adb`
+(so ADB-server mode works out of the box) by fetching a checksum-pinned
+official Google platform-tools release — not the distro package, which is too
+old to support Android 11+ wireless pairing. The runtime image is
+`distroless/cc` (glibc + libgcc only, no shell or package manager); the proxy
+binary itself starts the local adb server at boot (`START_ADB_SERVER`, below)
+before serving.
 
 ```bash
 cd proxy
 docker build -t adb-ws-proxy .
 docker run -p 8080:8080 -e AUTH_TOKEN=secret adb-ws-proxy
 ```
+
+To bump the pinned `adb` version, pass a new checksum at build time (see the
+comment above the `ARG PLATFORM_TOOLS_SHA256` line in the Dockerfile for how
+to compute it): `docker build --build-arg PLATFORM_TOOLS_SHA256=<hash> -t
+adb-ws-proxy .`
 
 For **ADB-server mode**, the container's adb server must reach devices on your
 LAN, and you'll want pairing keys to persist:
