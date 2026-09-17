@@ -108,8 +108,8 @@ function ProxySection() {
       </div>
       <p className="hint muted">
         The token must match the proxy's <code>AUTH_TOKEN</code>. Use{" "}
-        <code>wss://</code> in production — WebUSB and clipboard need a secure
-        origin anyway. Saved in this browser only.
+        <code>wss://</code> in production — WebUSB needs a secure origin
+        anyway. Saved in this browser only.
       </p>
     </section>
   );
@@ -189,7 +189,6 @@ function FavoritesSection({
           id: target,
           label: `${bookmark.name} (${target})`,
           adb,
-          transport: adb.transport,
           mode: "network",
         });
         store.touch(bookmark.id);
@@ -304,7 +303,6 @@ function UsbConnect({ devices, addDevice }: { devices: Devices; addDevice: AddDe
           id: adb.serial,
           label: `${adb.banner.model ?? device.name ?? device.serial} (USB)`,
           adb,
-          transport: adb.transport,
           mode: "usb",
         });
         refreshAuthorized();
@@ -419,7 +417,6 @@ function NetworkConnect({
         id,
         label: `${adb.banner.model ?? host} (${id})`,
         adb,
-        transport: adb.transport,
         mode: "network",
       });
     } catch (e) {
@@ -565,7 +562,6 @@ function ServerConnect({
           id: device.serial,
           label: `${device.model ?? device.serial} (server)`,
           adb,
-          transport: adb.transport,
           mode: "network",
         });
       } catch (e) {

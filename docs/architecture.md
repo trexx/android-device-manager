@@ -104,7 +104,6 @@ interface ConnectedDevice {
   id: string;        // serial or host:port
   label: string;
   adb: Adb;          // independent Adb instance
-  transport: AdbTransport;
   mode: "usb" | "network";
 }
 ```

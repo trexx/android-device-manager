@@ -92,7 +92,7 @@ function Workspace() {
         <main className="empty-state">
           <p>
             {devices.length === 0
-              ? "No devices connected. Connect a device over USB to begin."
+              ? "No devices connected. Connect a device above to begin."
               : "Select a device from the tab bar."}
           </p>
         </main>

@@ -5,6 +5,7 @@ import {
   downloadFile,
   isNavigable,
   joinPath,
+  LinuxFileType,
   listDir,
   parentPath,
   uploadFile,
@@ -35,7 +36,7 @@ function isFile(entry: AdbSyncEntry): boolean {
 }
 
 function icon(entry: AdbSyncEntry): string {
-  if (entry.type === 10 /* Link */) return "↪";
+  if (entry.type === LinuxFileType.Link) return "↪";
   return isNavigable(entry) ? "📁" : "📄";
 }
 

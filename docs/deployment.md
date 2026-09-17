@@ -19,17 +19,40 @@ served over **HTTPS** (or `http://localhost` for local dev).
 
 ### Docker
 
-[`web/Dockerfile`](../web/Dockerfile) builds the static site and serves it with
-nginx:
+[`web/Dockerfile`](../web/Dockerfile) builds the static site into a **data-only
+image**: a `scratch` stage holding `dist/` at `/` and nothing else — no web
+server, no shell, no exposed port. Serve it from a container that can read that
+filesystem:
 
-```bash
-cd web
-docker build -t adm-web .
-docker run -p 8080:80 adm-web        # then front with TLS
-```
+- **Kubernetes `image` volume** — how the published
+  `ghcr.io/trexx/android-device-manager-web` image is meant to be used. Needs the
+  `image` volume source (beta since Kubernetes 1.33):
 
-The build needs network access (the `postinstall` hook fetches the scrcpy server
-binary from GitHub).
+  ```yaml
+  spec:
+    containers:
+      - name: web
+        image: busybox:stable
+        command: ["httpd", "-f", "-p", "8080", "-h", "/www"]
+        ports: [{ containerPort: 8080 }]
+        volumeMounts:
+          - { name: site, mountPath: /www, readOnly: true }
+    volumes:
+      - name: site
+        image:
+          reference: ghcr.io/trexx/android-device-manager-web:2.3.0
+          pullPolicy: IfNotPresent
+  ```
+
+- **Your own image:** `COPY --from=ghcr.io/trexx/android-device-manager-web:2.3.0 / /www`
+  in a Dockerfile based on any static server.
+- **Extract to the host:** `docker create --name adm-web ghcr.io/trexx/android-device-manager-web:2.3.0`
+  then `docker cp adm-web:/. ./site`, and serve `./site` with Caddy's
+  `file_server` or similar.
+
+Build locally with `cd web && docker build -t adm-web .` — the build needs
+network access (the `postinstall` hook fetches the scrcpy server binary from
+GitHub). Whatever serves the files must be fronted with TLS.
 
 ## Proxy
 

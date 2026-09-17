@@ -1,7 +1,8 @@
 [package]
 name = "adb-ws-proxy"
-version = "0.1.0"
+version = "2.3.0"
 edition = "2024"
+rust-version = "1.88"
 description = "Stateless WebSocket-to-TCP relay for ADB over the network"
 license = "MIT"
 

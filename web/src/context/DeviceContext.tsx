@@ -6,20 +6,18 @@ import {
   useReducer,
   type ReactNode,
 } from "react";
-import type { Adb, AdbTransport } from "@yume-chan/adb";
+import type { Adb } from "@yume-chan/adb";
 
 export type ConnectionMode = "usb" | "network";
 
 /**
  * One connected device. Each holds an independent `Adb` instance, so panels
- * (shell, info, ...) are fully isolated per device. Built for many devices from
- * Phase 1 even though the USB flow adds them one at a time.
+ * (shell, info, ...) are fully isolated per device.
  */
 export interface ConnectedDevice {
   id: string; // serial (USB) or host:port (network)
   label: string;
   adb: Adb;
-  transport: AdbTransport;
   mode: ConnectionMode;
 }
 

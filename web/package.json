@@ -1,7 +1,7 @@
 {
   "name": "android-device-manager-web",
   "private": true,
-  "version": "0.1.0",
+  "version": "2.3.0",
   "type": "module",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
@@ -20,6 +20,7 @@
     "@yume-chan/adb-credential-web": "2.1.0",
     "@yume-chan/adb-daemon-webusb": "2.3.2",
     "@yume-chan/adb-scrcpy": "2.3.2",
+    "@yume-chan/fetch-scrcpy-server": "3.0.0-beta.3",
     "@yume-chan/scrcpy": "2.3.0",
     "@yume-chan/scrcpy-decoder-webcodecs": "2.5.3",
     "@yume-chan/stream-extra": "2.6.1",
@@ -31,7 +32,6 @@
     "@types/react-dom": "^19.2.3",
     "@types/w3c-web-usb": "^1.0.14",
     "@vitejs/plugin-react": "^6.0.3",
-    "@yume-chan/fetch-scrcpy-server": "1.0.0",
     "typescript": "^7.0.2",
     "vite": "^8.1.4"
   }

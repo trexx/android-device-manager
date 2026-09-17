@@ -28,6 +28,7 @@ AUTH_TOKEN=secret ALLOWED_SUBNETS=192.168.0.0/16,10.0.0.0/8 \
 | `ALLOWED_ORIGIN` | _(unset = any)_ | Comma-separated origins; if set, the `Origin` header must match (WebSocket upgrades and `/bookmarks` alike). |
 | `ADB_SERVER_ADDR` | `127.0.0.1:5037` | Target for the `/adb-server` endpoint (a local `adb` server). |
 | `BOOKMARKS_PATH` | _(unset = disabled)_ | File where `/bookmarks` persists the UI's saved devices (e.g. `/data/bookmarks.json`). The directory must exist and be writable. |
+| `START_ADB_SERVER` | `1` | Run `adb start-server` at boot (best effort; a failure only warns). Set `0` when `ADB_SERVER_ADDR` points at an external adb server. |
 
 ## Endpoints
 

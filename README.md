@@ -68,7 +68,7 @@ is never sent to any server.
 
 - **USB:** enable USB debugging, run `adb kill-server` first (only one process
   can claim the device), click *Connect via USB*.
-- **Network:** enable wireless debugging on the device (`adb tcpip 5555`), run
+- **Network:** expose a plain ADB port on the device (`adb tcpip 5555`), run
   the proxy (below), fill in the proxy URL + token once in the **Proxy**
   section, then the device IP and port.
 
@@ -96,6 +96,8 @@ Configuration (environment variables):
 | `MAX_CONNECTIONS` | `20` | Concurrent relay cap (`/readyz` reports 503 at capacity). Server mode opens one connection per ADB socket, so size accordingly. |
 | `ALLOWED_ORIGIN` | _(unset = any)_ | Comma-separated origins; if set, the WebSocket `Origin` must match. |
 | `ADB_SERVER_ADDR` | `127.0.0.1:5037` | Target for the `/adb-server` endpoint (the local `adb` server). |
+| `BOOKMARKS_PATH` | _(unset = disabled)_ | File where `/bookmarks` persists the UI's saved devices, so favorites roam across browsers. |
+| `START_ADB_SERVER` | `1` | Run `adb start-server` at boot for ADB-server mode; set `0` when `ADB_SERVER_ADDR` points at an external server. |
 
 Endpoints: `GET /connect?host=<ip>&port=<port>&token=<token>` (direct-to-`adbd`
 WebSocket relay; token may also be sent as `Authorization: Bearer <token>`),

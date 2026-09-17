@@ -31,7 +31,7 @@ web/
 │   └── main.tsx
 ├── vite.config.ts      # React plugin + scrcpy optimizeDeps handling
 ├── tsconfig*.json
-├── Dockerfile, nginx.conf, .dockerignore
+├── Dockerfile, .dockerignore   # data-only scratch image (see deployment.md)
 proxy/
 ├── src/main.rs         # listener, HTTP routing, manual WS handshake, relay
 ├── Cargo.toml, Cargo.lock
@@ -69,9 +69,9 @@ helper (with correct backpressure) used by the two network transports.
 
 **Web runtime:** `react`, `react-dom`, `@xterm/xterm`, `@xterm/addon-fit`,
 `@yume-chan/{adb, adb-daemon-webusb, adb-credential-web, stream-extra, scrcpy,
-adb-scrcpy, scrcpy-decoder-webcodecs}`.
-**Web dev:** `vite`, `@vitejs/plugin-react`, `typescript`, `@types/*`,
-`@yume-chan/fetch-scrcpy-server` (downloads the scrcpy server binary at install).
+adb-scrcpy, scrcpy-decoder-webcodecs, fetch-scrcpy-server}` (the last one
+downloads the scrcpy server binary at install and exports its URL + version).
+**Web dev:** `vite`, `@vitejs/plugin-react`, `typescript`, `@types/*`.
 **Proxy:** `tokio`, `tokio-tungstenite`, `futures-util`.
 
 ## Gotchas
