@@ -85,10 +85,13 @@ crypto**: the real `adb` performs the pairing.
 tokio-tungstenite). It does **not** parse ADB — it shuffles bytes between a
 WebSocket and a TCP socket. It exposes:
 
-- `GET /connect?host=<ip>&port=<port>&token=<token>` — relay to a device's
-  `adbd`, validated against a subnet allowlist.
-- `GET /adb-server?token=<token>` — relay to the configured adb server
-  (`ADB_SERVER_ADDR`, default `127.0.0.1:5037`).
+- `GET /connect?host=<ip>&port=<port>` — relay to a device's `adbd`, validated
+  against a subnet allowlist.
+- `GET /adb-server` — relay to the configured adb server (`ADB_SERVER_ADDR`,
+  default `127.0.0.1:5037`).
+
+Both upgrades carry the auth token as the WebSocket subprotocol
+`adm-token-<hex>` (see [proxy.md](./proxy.md#authentication)).
 - `GET /healthz`, `/readyz`, `/startupz` — unauthenticated Kubernetes probes.
 
 It is never an open relay: every upgrade needs a valid token; `/connect` targets

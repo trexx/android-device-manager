@@ -62,9 +62,10 @@ GitHub). Whatever serves the files must be fronted with TLS.
 (so ADB-server mode works out of the box) by fetching a checksum-pinned
 official Google platform-tools release — not the distro package, which is too
 old to support Android 11+ wireless pairing. The runtime image is
-`distroless/cc` (glibc + libgcc only, no shell or package manager); the proxy
-binary itself starts the local adb server at boot (`START_ADB_SERVER`, below)
-before serving.
+`distroless/cc:nonroot` (glibc + libgcc only, no shell or package manager,
+running as uid 65532 with `HOME=/home/nonroot`); the proxy binary itself starts
+the local adb server at boot (`START_ADB_SERVER`, below) before serving, and
+stops it again on SIGTERM.
 
 ```bash
 cd proxy
@@ -83,17 +84,24 @@ LAN, and you'll want pairing keys to persist:
 ```bash
 docker run --network host \
   -e AUTH_TOKEN=secret \
-  -v adb-keys:/root/.android \
+  -v adb-keys:/home/nonroot/.android \
   --init \
   adb-ws-proxy
 ```
 
 - `--network host` — so the in-container adb can reach LAN devices (and mDNS).
-- `-v adb-keys:/root/.android` — persist the adb server's key across restarts (so
-  paired devices stay paired).
-- `--init` — reap the adb daemon if it exits.
+- `-v adb-keys:/home/nonroot/.android` — persist the adb server's key across
+  restarts (so paired devices stay paired). The container runs as uid 65532, so
+  a bind-mounted directory must be writable by that uid; a named volume is
+  initialised with the right owner.
+- `--init` — reap the adb daemon if it dies on its own. The proxy handles
+  SIGTERM itself (it stops the adb server it started and exits promptly), so
+  `docker stop` is quick either way.
 - `START_ADB_SERVER=0` — set if you point `ADB_SERVER_ADDR` at an external adb
   server instead of running one in the container.
+- USB devices passed into the container (`--device`) would additionally need to
+  be readable by uid 65532 (udev rule or `--group-add`); the wireless and mDNS
+  paths are unaffected.
 
 ## TLS
 
@@ -121,7 +129,7 @@ services:
       ALLOWED_SUBNETS: "192.168.0.0/16"
       # ADB_SERVER_ADDR: "127.0.0.1:5037"   # default; in-container adb server
     volumes:
-      - adb-keys:/root/.android
+      - adb-keys:/home/nonroot/.android
 
   web:
     build: ./web

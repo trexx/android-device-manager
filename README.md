@@ -99,11 +99,13 @@ Configuration (environment variables):
 | `BOOKMARKS_PATH` | _(unset = disabled)_ | File where `/bookmarks` persists the UI's saved devices, so favorites roam across browsers. |
 | `START_ADB_SERVER` | `1` | Run `adb start-server` at boot for ADB-server mode; set `0` when `ADB_SERVER_ADDR` points at an external server. |
 
-Endpoints: `GET /connect?host=<ip>&port=<port>&token=<token>` (direct-to-`adbd`
-WebSocket relay; token may also be sent as `Authorization: Bearer <token>`),
-`GET /adb-server?token=<token>` (relay to the configured `adb` server — see
-below), plus unauthenticated plain-text Kubernetes probes `/healthz` (liveness),
-`/readyz` (readiness), `/startupz` (startup).
+Endpoints: `GET /connect?host=<ip>&port=<port>` (direct-to-`adbd` WebSocket
+relay), `GET /adb-server` (relay to the configured `adb` server — see below),
+plus unauthenticated plain-text Kubernetes probes `/healthz` (liveness),
+`/readyz` (readiness), `/startupz` (startup). The token travels as the WebSocket
+subprotocol `adm-token-<hex>` (the UI does this itself; `Authorization: Bearer
+<token>` and `?token=` also work for non-browser clients) — see
+[docs/proxy.md](./docs/proxy.md#authentication).
 
 **TLS:** terminate it in front (e.g. Caddy auto-HTTPS) and point the UI at
 `wss://`. TLS is intentionally kept out of the binary.
