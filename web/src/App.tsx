@@ -1,14 +1,22 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { DeviceProvider, useDevices } from "./context/DeviceContext";
 import { ProxyProvider } from "./context/ProxyContext";
 import { ConnectionManager } from "./components/ConnectionManager";
 import { DeviceSwitcher } from "./components/DeviceSwitcher";
 import { DeviceInfo } from "./components/DeviceInfo";
-import { ShellTerminal } from "./components/ShellTerminal";
 import { FileBrowser } from "./components/FileBrowser";
 import { AppManager } from "./components/AppManager";
 import { LogcatViewer } from "./components/LogcatViewer";
-import { ScreenMirror } from "./components/ScreenMirror";
+
+// The Shell and Screen panels pull in the two heaviest dependencies (xterm, and
+// the scrcpy stack plus its server binary), and neither is needed until its tab
+// is opened — so they load on demand instead of in the initial bundle.
+const ShellTerminal = lazy(() =>
+  import("./components/ShellTerminal").then((m) => ({ default: m.ShellTerminal })),
+);
+const ScreenMirror = lazy(() =>
+  import("./components/ScreenMirror").then((m) => ({ default: m.ScreenMirror })),
+);
 
 type Panel = "info" | "shell" | "files" | "apps" | "logcat" | "screen";
 
@@ -66,6 +74,7 @@ function Workspace() {
             </button>
           </nav>
           <section className="panel">
+            <Suspense fallback={<p className="muted">Loading…</p>}>
             {/* Key by device id so switching devices remounts the panel with a
                 fresh per-device session. */}
             {panel === "info" && (
@@ -86,6 +95,7 @@ function Workspace() {
             {panel === "screen" && (
               <ScreenMirror key={activeDevice.id} device={activeDevice} />
             )}
+            </Suspense>
           </section>
         </main>
       ) : (

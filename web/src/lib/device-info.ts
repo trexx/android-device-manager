@@ -1,4 +1,5 @@
 import type { Adb } from "@yume-chan/adb";
+import { runCommand } from "./shell";
 
 export interface BatteryInfo {
   level: number | null; // percentage 0-100
@@ -23,25 +24,6 @@ export interface DeviceInfo {
   resolution: string | null;
 }
 
-/**
- * Run a one-shot shell command and return its stdout as text.
- *
- * Prefers the shell (v2) protocol when the device supports it (clean stdout /
- * stderr separation and exit codes), otherwise falls back to the legacy
- * protocol where stdout and stderr are interleaved.
- */
-export async function runCommand(
-  adb: Adb,
-  command: string | readonly string[],
-): Promise<string> {
-  const shellProtocol = adb.subprocess.shellProtocol;
-  if (shellProtocol) {
-    const result = await shellProtocol.spawn(command).wait().toString();
-    return result.stdout;
-  }
-  return await adb.subprocess.noneProtocol.spawn(command).wait().toString();
-}
-
 // `dumpsys battery` status codes, per Android's BatteryManager.
 const BATTERY_STATUS: Record<string, string> = {
   "1": "Unknown",
@@ -51,7 +33,7 @@ const BATTERY_STATUS: Record<string, string> = {
   "5": "Full",
 };
 
-function parseBattery(raw: string): BatteryInfo | null {
+export function parseBattery(raw: string): BatteryInfo | null {
   if (!raw) return null;
   const levelMatch = raw.match(/^\s*level:\s*(\d+)/m);
   const statusMatch = raw.match(/^\s*status:\s*(\d+)/m);
@@ -62,7 +44,7 @@ function parseBattery(raw: string): BatteryInfo | null {
   };
 }
 
-function parseDf(raw: string): StorageInfo | null {
+export function parseDf(raw: string): StorageInfo | null {
   // Expected (df -h /data):
   //   Filesystem  Size  Used Avail Use% Mounted on
   //   /dev/...    108G   18G   90G  17% /data
@@ -78,7 +60,7 @@ function parseDf(raw: string): StorageInfo | null {
   };
 }
 
-function parseResolution(raw: string): string | null {
+export function parseResolution(raw: string): string | null {
   // `wm size` -> "Physical size: 1080x2400" (and maybe "Override size: ...")
   const match = raw.match(/(?:Physical|Override) size:\s*([\dx]+)/);
   return match ? match[1] : null;

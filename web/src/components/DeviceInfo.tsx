@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConnectedDevice } from "../context/DeviceContext";
 import { getDeviceInfo, type DeviceInfo as DeviceInfoData } from "../lib/device-info";
 
@@ -6,43 +6,36 @@ export function DeviceInfo({ device }: { device: ConnectedDevice }) {
   const [info, setInfo] = useState<DeviceInfoData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Only the newest request may touch state: a Refresh mid-load, a device
+  // switch, or an unmount must not let an older result land.
+  const requestId = useRef(0);
 
   const load = useCallback(async () => {
+    const id = ++requestId.current;
     setLoading(true);
     setError(null);
     try {
-      setInfo(await getDeviceInfo(device.adb));
+      const data = await getDeviceInfo(device.adb);
+      if (requestId.current === id) setInfo(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (requestId.current === id) setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (requestId.current === id) setLoading(false);
     }
   }, [device]);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    getDeviceInfo(device.adb)
-      .then((data) => {
-        if (!cancelled) setInfo(data);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    void load();
     return () => {
-      cancelled = true;
+      requestId.current++; // invalidate whatever is in flight
     };
-  }, [device]);
+  }, [load]);
 
   return (
     <div className="device-info">
       <div className="panel-header">
         <h2>Device Info</h2>
-        <button onClick={load} disabled={loading}>
+        <button onClick={() => void load()} disabled={loading}>
           {loading ? "Refreshing…" : "Refresh"}
         </button>
       </div>

@@ -57,7 +57,7 @@ async function request(proxyUrl: string, token: string, init?: RequestInit): Pro
   return response;
 }
 
-function isBookmark(value: unknown): value is Bookmark {
+export function isBookmark(value: unknown): value is Bookmark {
   if (typeof value !== "object" || value === null) {
     return false;
   }

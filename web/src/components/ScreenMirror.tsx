@@ -217,9 +217,11 @@ export function ScreenMirror({ device }: { device: ConnectedDevice }) {
       hostRef.current?.appendChild(canvas);
       sessionRef.current = { session, decoder, canvas, detach };
       setRunning(true);
-      void session.exited.then(() => {
+      // Tear down on exit whether the server left cleanly or with an error.
+      const onExit = () => {
         if (sessionRef.current?.session === session) stop();
-      });
+      };
+      session.exited.then(onExit, onExit);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

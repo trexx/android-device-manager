@@ -125,7 +125,8 @@ web/src/
 │   ├── ws-stream.ts            # WebSocket ⇄ byte-duplex helper (backpressure)
 │   ├── ws-transport.ts         # network/daemon transport (/connect)
 │   ├── adb-server-transport.ts # AdbServerClient connector (/adb-server)
-│   ├── device-info.ts          # getprop / dumpsys / df parsing + runCommand
+│   ├── shell.ts                # runCommand / runChecked (one-shot commands, exit codes)
+│   ├── device-info.ts          # getprop / dumpsys / df parsing
 │   ├── file-browser.ts         # adb.sync() list/pull/push + rm
 │   ├── app-manager.ts          # pm / dumpsys / am
 │   ├── logcat.ts               # spawn logcat + threadtime parse

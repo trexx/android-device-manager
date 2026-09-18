@@ -1,6 +1,6 @@
 import type { Adb } from "@yume-chan/adb";
 import type { MaybeConsumable, ReadableStream } from "@yume-chan/stream-extra";
-import { runCommand } from "./device-info";
+import { runChecked, runCommand } from "./shell";
 
 export type PackageFilter = "third-party" | "system" | "all";
 
@@ -17,7 +17,7 @@ export interface PackageDetails {
   lastUpdate: string | null;
 }
 
-function parsePackageList(raw: string): string[] {
+export function parsePackageList(raw: string): string[] {
   return raw
     .split("\n")
     .map((line) => line.trim())
@@ -43,7 +43,7 @@ export async function listPackages(adb: Adb, filter: PackageFilter): Promise<App
 }
 
 export async function getPackageDetails(adb: Adb, pkg: string): Promise<PackageDetails> {
-  const raw = await runCommand(adb, `dumpsys package ${pkg}`);
+  const raw = await runCommand(adb, ["dumpsys", "package", assertPackageId(pkg)]);
   const find = (re: RegExp) => raw.match(re)?.[1]?.trim() ?? null;
   return {
     versionName: find(/versionName=(\S+)/),
@@ -54,23 +54,50 @@ export async function getPackageDetails(adb: Adb, pkg: string): Promise<PackageD
   };
 }
 
-// Package ids come from `pm list packages` (trusted, no shell metacharacters),
-// so they're safe to interpolate directly.
-
-export function setEnabled(adb: Adb, pkg: string, enabled: boolean): Promise<string> {
-  return runCommand(adb, enabled ? `pm enable ${pkg}` : `pm disable-user --user 0 ${pkg}`);
+/**
+ * Android package names are dot-separated `[A-Za-z0-9_]` segments, so anything
+ * else cannot be a real id. Tango's `spawn` does not quote arguments (the
+ * command runs under `sh -c`), so refusing here is what keeps a malformed id —
+ * whatever its source — from reaching the shell.
+ */
+const PACKAGE_ID = /^[A-Za-z0-9_.]+$/;
+function assertPackageId(pkg: string): string {
+  if (!PACKAGE_ID.test(pkg)) {
+    throw new Error(`Invalid package name: ${pkg}`);
+  }
+  return pkg;
 }
 
-export function uninstall(adb: Adb, pkg: string): Promise<string> {
-  return runCommand(adb, `pm uninstall ${pkg}`);
+/**
+ * `pm` reports failures in stdout ("Failure [INSTALL_FAILED_…]", "Failed") and
+ * on some Android versions still exits 0, so the text is checked as well as
+ * the exit code.
+ */
+function checkPmOutput(out: string): string {
+  const text = out.trim();
+  if (/^(Failure|Failed)\b/m.test(text)) {
+    throw new Error(text);
+  }
+  return out;
 }
 
-export function forceStop(adb: Adb, pkg: string): Promise<string> {
-  return runCommand(adb, `am force-stop ${pkg}`);
+export async function setEnabled(adb: Adb, pkg: string, enabled: boolean): Promise<string> {
+  const id = assertPackageId(pkg);
+  return checkPmOutput(
+    await runChecked(adb, enabled ? ["pm", "enable", id] : ["pm", "disable-user", "--user", "0", id]),
+  );
 }
 
-export function clearData(adb: Adb, pkg: string): Promise<string> {
-  return runCommand(adb, `pm clear ${pkg}`);
+export async function uninstall(adb: Adb, pkg: string): Promise<string> {
+  return checkPmOutput(await runChecked(adb, ["pm", "uninstall", assertPackageId(pkg)]));
+}
+
+export async function forceStop(adb: Adb, pkg: string): Promise<string> {
+  return runChecked(adb, ["am", "force-stop", assertPackageId(pkg)]);
+}
+
+export async function clearData(adb: Adb, pkg: string): Promise<string> {
+  return checkPmOutput(await runChecked(adb, ["pm", "clear", assertPackageId(pkg)]));
 }
 
 /**
@@ -86,8 +113,8 @@ export async function installApk(adb: Adb, file: File): Promise<string> {
     mtime: Math.floor(Date.now() / 1000),
   });
   try {
-    return await runCommand(adb, `pm install -r ${remote}`);
+    return checkPmOutput(await runChecked(adb, ["pm", "install", "-r", remote]));
   } finally {
-    await runCommand(adb, `rm -f ${remote}`).catch(() => {});
+    await runCommand(adb, ["rm", "-f", remote]).catch(() => {});
   }
 }

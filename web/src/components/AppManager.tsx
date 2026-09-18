@@ -25,6 +25,9 @@ export function AppManager({ device }: { device: ConnectedDevice }) {
   const [details, setDetails] = useState<PackageDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const apkInputRef = useRef<HTMLInputElement>(null);
+  // Which package the in-flight `dumpsys` is for; a fast A→B click must not
+  // let A's details land under B.
+  const detailsFor = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,17 +51,20 @@ export function AppManager({ device }: { device: ConnectedDevice }) {
       if (expanded === pkg) {
         setExpanded(null);
         setDetails(null);
+        detailsFor.current = null;
         return;
       }
       setExpanded(pkg);
       setDetails(null);
       setDetailsLoading(true);
+      detailsFor.current = pkg;
       try {
-        setDetails(await getPackageDetails(device.adb, pkg));
+        const result = await getPackageDetails(device.adb, pkg);
+        if (detailsFor.current === pkg) setDetails(result);
       } catch {
-        setDetails(null);
+        if (detailsFor.current === pkg) setDetails(null);
       } finally {
-        setDetailsLoading(false);
+        if (detailsFor.current === pkg) setDetailsLoading(false);
       }
     },
     [expanded, device],

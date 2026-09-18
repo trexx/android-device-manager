@@ -3,6 +3,7 @@ import type { ConnectedDevice } from "../context/DeviceContext";
 import {
   deleteEntry,
   downloadFile,
+  isDirectoryAt,
   isNavigable,
   joinPath,
   LinuxFileType,
@@ -93,16 +94,44 @@ export function FileBrowser({ device }: { device: ConnectedDevice }) {
     [device, path],
   );
 
-  const onDelete = useCallback(
+  // Directories open; a symlink is resolved first (it may point at a file,
+  // which downloads instead).
+  const onOpen = useCallback(
     async (entry: AdbSyncEntry) => {
       const full = joinPath(path, entry.name);
-      if (!window.confirm(`Delete ${full}${isNavigable(entry) ? " and its contents" : ""}?`)) {
+      if (entry.type !== LinuxFileType.Link) {
+        setPath(full);
         return;
       }
       setBusy(true);
       setError(null);
       try {
-        await deleteEntry(device.adb, full, isNavigable(entry));
+        if (await isDirectoryAt(device.adb, full)) {
+          setPath(full);
+        } else {
+          await downloadFile(device.adb, full, entry.name);
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [device, path],
+  );
+
+  const onDelete = useCallback(
+    async (entry: AdbSyncEntry) => {
+      const full = joinPath(path, entry.name);
+      // `rm -r` only for real directories; a symlink is removed as itself.
+      const isDir = entry.type === LinuxFileType.Directory;
+      if (!window.confirm(`Delete ${full}${isDir ? " and its contents" : ""}?`)) {
+        return;
+      }
+      setBusy(true);
+      setError(null);
+      try {
+        await deleteEntry(device.adb, full, isDir);
         await load(path);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -204,7 +233,7 @@ export function FileBrowser({ device }: { device: ConnectedDevice }) {
               {isNavigable(entry) ? (
                 <button
                   className="fb-name fb-link"
-                  onClick={() => setPath(joinPath(path, entry.name))}
+                  onClick={() => void onOpen(entry)}
                   disabled={busy}
                   title={entry.name}
                 >
@@ -221,7 +250,7 @@ export function FileBrowser({ device }: { device: ConnectedDevice }) {
               </span>
               <span className="fb-time">{formatTime(entry.mtime)}</span>
               <span className="fb-row-actions">
-                {isFile(entry) && (
+                {entry.type !== LinuxFileType.Directory && (
                   <button onClick={() => onDownload(entry)} disabled={busy} title="Download">
                     ↓
                   </button>

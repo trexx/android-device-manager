@@ -45,7 +45,7 @@ function readJson(key: string): Partial<ProxyConfig> {
   return {};
 }
 
-function loadProxyConfig(): ProxyConfig {
+export function loadProxyConfig(): ProxyConfig {
   const stored = readJson(STORAGE_KEY);
   if (stored.proxyUrl !== undefined || stored.token !== undefined) {
     return { ...DEFAULT_CONFIG, ...stored };

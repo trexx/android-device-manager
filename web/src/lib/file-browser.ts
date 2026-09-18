@@ -1,6 +1,6 @@
 import type { Adb, AdbSync } from "@yume-chan/adb";
 import { LinuxFileType } from "@yume-chan/adb";
-import type { MaybeConsumable, ReadableStream } from "@yume-chan/stream-extra";
+import type { MaybeConsumable, ReadableStream, WritableStream } from "@yume-chan/stream-extra";
 
 export { LinuxFileType };
 export type AdbSyncEntry = AdbSync.OpenDir.Entry;
@@ -31,8 +31,33 @@ export async function listDir(adb: Adb, path: string): Promise<AdbSyncEntry[]> {
   return entries.filter((entry) => entry.name !== "." && entry.name !== "..");
 }
 
-/** Pull a file from the device and save it via the browser. */
+/** Whether `path` is a directory, following symlinks. */
+export function isDirectoryAt(adb: Adb, path: string): Promise<boolean> {
+  return adb.sync.isDirectory(path);
+}
+
+/**
+ * Pull a file from the device. On Chromium the File System Access API lets the
+ * transfer stream straight to disk, so a multi-gigabyte file never sits in
+ * memory; other browsers get the buffered Blob download. The save dialog must
+ * open before any other await so it still counts as the user's click.
+ */
 export async function downloadFile(adb: Adb, path: string, name: string): Promise<void> {
+  if (window.showSaveFilePicker) {
+    let handle: FileSystemFileHandle;
+    try {
+      handle = await window.showSaveFilePicker({ suggestedName: name });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return; // dialog dismissed
+      throw e;
+    }
+    const writable = await handle.createWritable();
+    // pipeTo closes the file on success (committing it) and aborts it on error
+    // (discarding the partial write), so nothing else to clean up here.
+    await adb.sync.read(path).pipeTo(writable as unknown as WritableStream<Uint8Array>);
+    return;
+  }
+
   const reader = adb.sync.read(path).getReader();
   const chunks: Uint8Array[] = [];
   for (;;) {

@@ -4,6 +4,7 @@ import {
   useContext,
   useMemo,
   useReducer,
+  useRef,
   type ReactNode,
 } from "react";
 import type { Adb } from "@yume-chan/adb";
@@ -73,26 +74,46 @@ const DeviceContext = createContext<DeviceContextValue | null>(null);
 
 export function DeviceProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, { devices: [], activeId: null });
+  // Synchronous mirror of the connected set, keyed by id. Reducer state only
+  // updates on render, but two connect attempts can resolve in the same tick,
+  // and `disconnected` handlers must be able to tell "my entry" from a newer
+  // one that reused the id.
+  const entries = useRef(new Map<string, ConnectedDevice>());
 
   const addDevice = useCallback((device: ConnectedDevice) => {
+    const existing = entries.current.get(device.id);
+    if (existing) {
+      // Already connected (two attempts raced, or the same device reached via
+      // two transports): keep the live session, close the redundant one, and
+      // just focus the tab. No `disconnected` handler is attached to the
+      // orphan — it would otherwise evict the live entry when it settles.
+      device.adb.close().catch(() => {});
+      dispatch({ type: "setActive", id: device.id });
+      return;
+    }
+    entries.current.set(device.id, device);
     dispatch({ type: "add", device });
     // Drop the device from the list automatically if the connection drops
-    // (cable unplugged, daemon restart, etc.).
-    device.adb.disconnected
-      .then(() => dispatch({ type: "remove", id: device.id }))
-      .catch(() => dispatch({ type: "remove", id: device.id }));
+    // (cable unplugged, daemon restart, etc.) — but only while this object is
+    // still the one registered under its id.
+    const onDisconnected = () => {
+      if (entries.current.get(device.id) === device) {
+        entries.current.delete(device.id);
+        dispatch({ type: "remove", id: device.id });
+      }
+    };
+    device.adb.disconnected.then(onDisconnected, onDisconnected);
   }, []);
 
-  const removeDevice = useCallback(
-    (id: string) => {
-      const device = state.devices.find((d) => d.id === id);
-      // Fire-and-forget close; the `disconnected` handler above performs the
-      // actual state removal once the transport settles.
-      device?.adb.close().catch(() => {});
-      dispatch({ type: "remove", id });
-    },
-    [state.devices],
-  );
+  const removeDevice = useCallback((id: string) => {
+    const device = entries.current.get(id);
+    if (!device) return;
+    entries.current.delete(id);
+    // Fire-and-forget close; the entry is dropped right away rather than when
+    // the transport settles.
+    device.adb.close().catch(() => {});
+    dispatch({ type: "remove", id });
+  }, []);
 
   const setActive = useCallback((id: string) => {
     dispatch({ type: "setActive", id });

@@ -61,6 +61,7 @@ npm run dev        # dev server at http://localhost:5173
 npm run build      # static output in web/dist/
 npm run preview    # serve the production build locally
 npm run typecheck  # type-check without emitting
+npm test           # unit tests (Vitest)
 ```
 
 On first connection the device shows an RSA "Allow USB debugging?" prompt —

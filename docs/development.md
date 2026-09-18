@@ -9,6 +9,7 @@ npm install            # postinstall downloads the scrcpy server binary
 npm run dev            # dev server, http://localhost:5173
 npm run build          # tsc -b && vite build  ->  web/dist/
 npm run typecheck      # tsc -b
+npm test               # Vitest unit tests (parsers and pure helpers)
 npm run preview        # serve the production build
 
 # Proxy (Rust, stable)
@@ -75,7 +76,8 @@ helper (with correct backpressure) used by the two network transports.
 `@yume-chan/{adb, adb-daemon-webusb, adb-credential-web, stream-extra, scrcpy,
 adb-scrcpy, scrcpy-decoder-webcodecs, fetch-scrcpy-server}` (the last one
 downloads the scrcpy server binary at install and exports its URL + version).
-**Web dev:** `vite`, `@vitejs/plugin-react`, `typescript`, `@types/*`.
+**Web dev:** `vite`, `@vitejs/plugin-react`, `typescript`, `@types/*`, `vitest`
+(dev-only; runs in CI).
 **Proxy:** `tokio`, `tokio-tungstenite`, `futures-util`.
 
 ## Gotchas
@@ -112,6 +114,14 @@ downloads the scrcpy server binary at install and exports its URL + version).
   with `escapeArg` — the array form is not a quoting mechanism.
 - Renderers take an options object: `new WebGLVideoFrameRenderer({ canvas })`.
 
+**Content-Security-Policy**
+- Production builds carry a `<meta>` CSP injected by the inline `adm-csp` plugin
+  in `vite.config.ts` (build only — the dev server injects styles and HMR code
+  inline). `style-src` needs `'unsafe-inline'` because xterm injects `<style>`
+  elements; `connect-src` allows any host because the proxy URL is user-entered.
+  Extend it if a new external resource is ever introduced, and re-check the
+  Screen panel under `npm run preview` (the console reports violations).
+
 **scrcpy runtime**
 - Default tunnel is **reverse** (device dials back), which isn't supported over
   the adb-server relay — pass `tunnelForward: true` (works over USB + relay).
@@ -129,5 +139,8 @@ downloads the scrcpy server binary at install and exports its URL + version).
 
 All planned phases are implemented and verified on real hardware: USB, network
 (`adb tcpip`), and ADB-server mode with wireless pairing; Device Info, Shell,
-Files, Apps, Logcat, and Screen mirror. There is no automated test suite yet —
-validation is manual against real devices. Add Vitest if the codebase grows.
+Files, Apps, Logcat, and Screen mirror. Pure parsing and helper logic (the
+logcat/`dumpsys`/`df` parsers, package-id validation, path and URL helpers, the
+proxy-config migration) has Vitest unit tests (`npm test`, `src/**/*.test.ts`,
+run in CI); everything that touches a device is validated by hand against real
+hardware.
