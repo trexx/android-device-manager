@@ -84,7 +84,10 @@ connection then shows the on-device RSA prompt.
 ## Feature panels
 
 Each connected device has its own tab; switching tabs switches the active `Adb`.
-Panels are isolated per device.
+Panels are isolated per device, and they keep running when you switch to
+another panel or device: a shell session, a logcat stream, or a screen mirror
+is still there when you come back (Screen pauses decoding while hidden).
+Closing a device's tab ends its sessions.
 
 ### Device Info
 Manufacturer, model, Android version + SDK, serial, battery (level + charging
@@ -94,7 +97,7 @@ state), `/data` storage usage, and display resolution. Reads `getprop` plus
 ### Shell
 A full interactive shell (xterm.js) wired to a device PTY (`adb.subprocess`).
 Colors, cursor movement, and on-device tab completion work. Each device gets its
-own terminal; opening the panel starts a fresh session.
+own terminal; the session lasts until the device is disconnected.
 
 ### Files
 Browse the filesystem via `adb.sync`. Click folders to navigate, use the

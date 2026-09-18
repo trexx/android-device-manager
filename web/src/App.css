@@ -415,6 +415,21 @@ button.primary:hover:not(:disabled) {
   padding: 16px;
 }
 
+/* One slot per opened panel; inactive ones stay mounted but hidden. The slot
+   gives its panel the same column-flex environment .panel used to. */
+.panel-slot {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* The `hidden` attribute alone loses to the display rules above. */
+.panel-slot[hidden],
+.workspace[hidden] {
+  display: none;
+}
+
 .panel-header {
   display: flex;
   align-items: center;

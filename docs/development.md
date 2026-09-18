@@ -26,8 +26,8 @@ web/
 ├── src/
 │   ├── lib/            # transports, adb helpers, per-feature logic (no JSX)
 │   ├── context/        # DeviceContext (multi-device state)
-│   ├── components/     # ConnectionManager, DeviceSwitcher, one per panel
-│   ├── App.tsx         # layout + panel tabs
+│   ├── components/     # DeviceSwitcher + one per panel; connection/ = landing sections
+│   ├── App.tsx         # per-device workspaces (tab strip + persistent panels)
 │   ├── App.css         # all styles (one stylesheet, CSS custom properties)
 │   └── main.tsx
 ├── vite.config.ts      # React plugin + scrcpy optimizeDeps handling

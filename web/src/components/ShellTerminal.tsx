@@ -29,7 +29,12 @@ export function ShellTerminal({ device }: { device: ConnectedDevice }) {
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(host);
-    fit.fit();
+    try {
+      fit.fit();
+    } catch {
+      // Host not laid out yet (e.g. mounted while hidden); the ResizeObserver
+      // below fits it once it has a size.
+    }
 
     let disposed = false;
     let pty: Pty | undefined;

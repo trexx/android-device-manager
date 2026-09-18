@@ -155,7 +155,14 @@ function attachInput(canvas: HTMLCanvasElement, controller: ScrcpyControlMessage
   };
 }
 
-export function ScreenMirror({ device }: { device: ConnectedDevice }) {
+export function ScreenMirror({
+  device,
+  hidden = false,
+}: {
+  device: ConnectedDevice;
+  /** True while the panel is mounted but not visible (another tab or device). */
+  hidden?: boolean;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<ActiveSession | null>(null);
   const [running, setRunning] = useState(false);
@@ -182,6 +189,17 @@ export function ScreenMirror({ device }: { device: ConnectedDevice }) {
 
   // Stop the session when the panel unmounts.
   useEffect(() => stop, [stop]);
+
+  // Hidden (another tab or device is showing): pause decoding and rendering.
+  // The decoder buffers frames since the last keyframe and replays them on
+  // resume, so the picture comes back intact without burning decode time
+  // in the background.
+  useEffect(() => {
+    const decoder = sessionRef.current?.decoder;
+    if (!decoder) return;
+    if (hidden) decoder.pause();
+    else decoder.resume();
+  }, [hidden]);
 
   const start = useCallback(async () => {
     if (!WebCodecsVideoDecoder.isSupported) {
