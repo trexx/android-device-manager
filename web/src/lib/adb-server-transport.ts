@@ -1,5 +1,5 @@
 import { AdbServerClient } from "@yume-chan/adb";
-import type { AdbIncomingSocketHandler } from "@yume-chan/adb";
+import type { Adb } from "@yume-chan/adb";
 import { proxyBase, tokenProtocol } from "./proxy-url";
 import { openWsByteDuplex } from "./ws-stream";
 
@@ -55,7 +55,7 @@ class WebSocketServerConnector implements AdbServerClient.ServerConnector {
     };
   }
 
-  addReverseTunnel(_handler: AdbIncomingSocketHandler, _address?: string): never {
+  addReverseTunnel(_handler: Adb.IncomingSocketHandler, _address?: string): never {
     throw new Error("Reverse tunnels are not supported over the adb-server relay.");
   }
 

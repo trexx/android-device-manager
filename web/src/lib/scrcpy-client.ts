@@ -2,24 +2,30 @@ import type { Adb } from "@yume-chan/adb";
 import { AdbScrcpyClient, AdbScrcpyOptionsLatest } from "@yume-chan/adb-scrcpy";
 import type {
   ScrcpyControlMessageWriter,
-  ScrcpyMediaStreamPacket,
   ScrcpyVideoStreamMetadata,
+  ScrcpyVideoStreamPacket,
 } from "@yume-chan/scrcpy";
 import { ReadableStream } from "@yume-chan/stream-extra";
 import { BIN, VERSION } from "@yume-chan/fetch-scrcpy-server";
 
 const SERVER_PATH = "/data/local/tmp/scrcpy-server.jar";
 
+/** Video encoders scrcpy 4.x can be asked for (the device must support it). */
+export const VIDEO_CODECS = ["h264", "h265", "av1", "vp8", "vp9"] as const;
+export type VideoCodec = (typeof VIDEO_CODECS)[number];
+
 export interface ScrcpyStartOptions {
   /** Max dimension in px; 0 = device resolution. */
   maxSize: number;
   /** Video bit rate in bits/sec. */
   videoBitRate: number;
+  /** Encoder to request on the device; default `h264`. */
+  videoCodec?: VideoCodec;
 }
 
 export interface ScrcpyVideo {
   metadata: ScrcpyVideoStreamMetadata;
-  stream: ReadableStream<ScrcpyMediaStreamPacket>;
+  stream: ReadableStream<ScrcpyVideoStreamPacket>;
 }
 
 export interface ScrcpySession {
@@ -64,6 +70,7 @@ export async function startScrcpy(adb: Adb, options: ScrcpyStartOptions): Promis
       tunnelForward: true,
       maxSize: options.maxSize,
       videoBitRate: options.videoBitRate,
+      videoCodec: options.videoCodec ?? "h264",
     },
     { version: VERSION },
   );

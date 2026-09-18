@@ -56,6 +56,10 @@ helper (with correct backpressure) used by the two network transports.
   - Proxy crates: `tokio`, `tokio-tungstenite`, `futures-util` only.
 - **Pin `@yume-chan/*` packages to exact versions** — Tango's API is not yet
   stable. When updating, read the actual `.d.ts` rather than trusting memory.
+  The family is currently on Tango's **3.0.0 prerelease stream**
+  (`3.0.0-beta.3`), which is what brings scrcpy 4.x support; all `@yume-chan/*`
+  packages must move together, and Renovate follows prereleases from a
+  prerelease pin (the group stays manual-review).
 - **Styling is plain CSS** with custom properties in the single `App.css`. Dark
   mode follows `prefers-color-scheme`.
 - **Every transport produces an identical `Adb`**, so panels stay
@@ -90,15 +94,30 @@ downloads the scrcpy server binary at install and exports its URL + version).
 - The scrcpy decoder family is added to `optimizeDeps.exclude`, and
   `fetch-scrcpy-server` too (its `new URL('./server.bin', import.meta.url)` asset
   reference breaks if pre-bundled).
-- Excluding those leaves their CJS transitive deps served raw, breaking the
-  default import (`does not provide an export named 'default'`). Fix:
-  `optimizeDeps.include: ["yuv-buffer", "yuv-canvas"]` forces esbuild to convert
-  them. (`tinyh264` ships an ESM build and is fine.)
+- Tango 3's WebCodecs decoder no longer pulls in CJS packages (`tinyh264`,
+  `yuv-canvas`), so the old `optimizeDeps.include: ["yuv-buffer", "yuv-canvas"]`
+  workaround is gone. If a `does not provide an export named 'default'` error
+  reappears after a dependency bump, an excluded package has grown a CJS
+  transitive dep again — force-prebundle that dep with `optimizeDeps.include`.
+
+**Tango 3 API notes** (things that changed from 2.x and are easy to misremember)
+- Auth: `adbDaemonAuthenticate({ serial, connection, credentialManager })` with
+  `AdbWebCryptoCredentialManager(new TangoIndexedDbStorage(), name)`. The storage
+  migrates keys from Tango 2's IndexedDB layout, so earlier authorizations survive.
+- `adb.sync` is a **pooled service property** (`adb.sync.readdir/read/write/
+  isDirectory`), not a factory; there is nothing to dispose per call.
+- Subprocess: `adb.subprocess.shellProtocol.spawn(cmd).wait().toString()` →
+  `{ stdout, stderr, exitCode }`; the none protocol yields a string. `spawn`
+  joins array commands **unescaped** (`sh -c`), so quote user-derived arguments
+  with `escapeArg` — the array form is not a quoting mechanism.
+- Renderers take an options object: `new WebGLVideoFrameRenderer({ canvas })`.
 
 **scrcpy runtime**
 - Default tunnel is **reverse** (device dials back), which isn't supported over
   the adb-server relay — pass `tunnelForward: true` (works over USB + relay).
 - The latest `injectTouch` message requires an `actionButton` field.
+- `ScrcpyOptions4_1.Init` makes `videoCodec` a required field; pass `"h264"`
+  unless the user picked another encoder.
 - The **WebGL renderer** can't upload hardware-decoded (YUV, external-sampling)
   `VideoFrame`s to a GL texture on **ANGLE's Vulkan backend** — it fails silently
   (a GL error, not an exception; the incomplete texture samples as opaque black,

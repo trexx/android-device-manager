@@ -11,19 +11,19 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b",
-    "postinstall": "fetch-scrcpy-server 3.3.4"
+    "postinstall": "fetch-scrcpy-server 4.1"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
-    "@yume-chan/adb": "2.6.4",
-    "@yume-chan/adb-credential-web": "2.1.0",
-    "@yume-chan/adb-daemon-webusb": "2.3.2",
-    "@yume-chan/adb-scrcpy": "2.3.2",
+    "@yume-chan/adb": "3.0.0-beta.3",
+    "@yume-chan/adb-credential-web": "3.0.0-beta.3",
+    "@yume-chan/adb-daemon-webusb": "3.0.0-beta.3",
+    "@yume-chan/adb-scrcpy": "3.0.0-beta.3",
     "@yume-chan/fetch-scrcpy-server": "3.0.0-beta.3",
-    "@yume-chan/scrcpy": "2.3.0",
-    "@yume-chan/scrcpy-decoder-webcodecs": "2.5.3",
-    "@yume-chan/stream-extra": "2.6.1",
+    "@yume-chan/scrcpy": "3.0.0-beta.3",
+    "@yume-chan/scrcpy-decoder-webcodecs": "3.0.0-beta.3",
+    "@yume-chan/stream-extra": "3.0.0-beta.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

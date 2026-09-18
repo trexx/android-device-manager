@@ -36,10 +36,10 @@ export async function runCommand(
 ): Promise<string> {
   const shellProtocol = adb.subprocess.shellProtocol;
   if (shellProtocol) {
-    const result = await shellProtocol.spawnWaitText(command);
+    const result = await shellProtocol.spawn(command).wait().toString();
     return result.stdout;
   }
-  return adb.subprocess.noneProtocol.spawnWaitText(command);
+  return await adb.subprocess.noneProtocol.spawn(command).wait().toString();
 }
 
 // `dumpsys battery` status codes, per Android's BatteryManager.

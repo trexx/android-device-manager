@@ -120,8 +120,10 @@ bottom** resumes. The level dropdown is a client-side display filter — it chan
 nothing on the device.
 
 ### Screen (scrcpy)
-Live screen mirroring via `@yume-chan/adb-scrcpy` + the WebCodecs decoder. Pick
-**Resolution** and **Bitrate**, then **Start**. Controls: **touch** (click/drag
+Live screen mirroring via `@yume-chan/adb-scrcpy` + the WebCodecs decoder
+(scrcpy server 4.1). Pick **Resolution**, **Bitrate**, and **Codec** (H.264 by
+default; H.265, AV1, VP8, or VP9 if the device can encode them — an unsupported
+choice fails at start with the server's error), then **Start**. Controls: **touch** (click/drag
 on the canvas) and **keyboard** input, **Back / Home / Recents / Vol± / Power**,
 **Rotate**, and **Screenshot** (saves a PNG). Works over USB or the network /
 ADB-server transports.

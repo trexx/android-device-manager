@@ -1,4 +1,5 @@
-import type { Adb, AdbSyncWriteOptions } from "@yume-chan/adb";
+import type { Adb } from "@yume-chan/adb";
+import type { MaybeConsumable, ReadableStream } from "@yume-chan/stream-extra";
 import { runCommand } from "./device-info";
 
 export type PackageFilter = "third-party" | "system" | "all";
@@ -78,17 +79,12 @@ export function clearData(adb: Adb, pkg: string): Promise<string> {
  */
 export async function installApk(adb: Adb, file: File): Promise<string> {
   const remote = "/data/local/tmp/__adm_install.apk";
-  const sync = await adb.sync();
-  try {
-    await sync.write({
-      filename: remote,
-      file: file.stream() as unknown as AdbSyncWriteOptions["file"],
-      permission: 0o644,
-      mtime: Math.floor(Date.now() / 1000),
-    });
-  } finally {
-    await sync.dispose();
-  }
+  await adb.sync.write({
+    path: remote,
+    readable: file.stream() as unknown as ReadableStream<MaybeConsumable<Uint8Array>>,
+    permission: 0o644,
+    mtime: Math.floor(Date.now() / 1000),
+  });
   try {
     return await runCommand(adb, `pm install -r ${remote}`);
   } finally {

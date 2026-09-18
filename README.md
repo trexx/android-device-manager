@@ -32,9 +32,10 @@ Browser), **Phase 4** (App Manager), **Phase 5** (Logcat), and **Phase 6**
   search and details; install/uninstall, enable/disable, force-stop, clear data.
 - Logcat viewer — streamed `logcat -v threadtime`, color-coded levels, level/tag/
   PID filters, search highlight, pause/clear, auto-scroll, virtualized list.
-- Screen mirror (scrcpy) — live video decoded to a `<canvas>` via WebCodecs;
-  touch + keyboard input, Back/Home/Recents/Volume/Power, rotate, screenshot, and
-  resolution/bitrate controls. Works over USB or the network.
+- Screen mirror (scrcpy 4.1) — live video decoded to a `<canvas>` via
+  WebCodecs; touch + keyboard input, Back/Home/Recents/Volume/Power, rotate,
+  screenshot, and resolution/bitrate/codec (H.264, H.265, AV1, VP8, VP9)
+  controls. Works over USB or the network.
 
 > The scrcpy server binary is downloaded at install time by a `postinstall`
 > hook (`fetch-scrcpy-server`) and bundled as a static asset; pushing it to the

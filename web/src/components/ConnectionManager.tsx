@@ -506,7 +506,7 @@ function ServerConnect({
   const [connPort, setConnPort] = useState("");
 
   const stopObserver = useCallback(() => {
-    observerRef.current?.stop();
+    void observerRef.current?.close();
     observerRef.current = null;
   }, []);
 
