@@ -97,11 +97,14 @@ Colors, cursor movement, and on-device tab completion work. Each device gets its
 own terminal; opening the panel starts a fresh session.
 
 ### Files
-Browse the filesystem via `adb.sync()`. Click folders to navigate, use the
-breadcrumb / **Up** to go back. Per file: **download** (↓, saved by the browser)
-and **delete** (×, with confirm). **Upload** with the button or by dragging files
-onto the list. Starts at `/sdcard`; breadcrumb to `/` for elsewhere
-(permission-denied directories show an inline error).
+Browse the filesystem via `adb.sync`. Click folders to navigate, use the
+breadcrumb / **Up** to go back. Per file: **download** (↓ — on Chromium a save
+dialog streams the file straight to disk, so large files never sit in memory;
+other browsers buffer and download) and **delete** (×, with confirm). Symlinks
+resolve on click: a link to a directory opens it, a link to a file downloads it.
+**Upload** with the button or by dragging files onto the list. Starts at
+`/sdcard`; breadcrumb to `/` for elsewhere (permission-denied directories show
+an inline error).
 
 ### Apps
 List packages (**Third-party / System / All**) with live search. Expand a package
@@ -109,7 +112,8 @@ for details (`dumpsys package`: version, path, install/update times) and actions
 **Enable/Disable** (`pm enable` / `pm disable-user --user 0`, no confirm — it's
 reversible), **Force stop** (`am force-stop`), **Clear data** (`pm clear`,
 confirm), **Uninstall** (`pm uninstall`, confirm). **Install APK** pushes the file
-to a temp path and runs `pm install -r`.
+to a temp path and runs `pm install -r`. A non-zero exit or a `Failure […]` line
+from `pm` is shown as an error, not a success notice.
 
 ### Logcat
 Streams `logcat -v threadtime`, color-coded by level, into a virtualized list
