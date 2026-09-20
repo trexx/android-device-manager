@@ -55,8 +55,10 @@ RUN apt-get update \
 # mostly-static Rust binary both need — and nothing else: no shell, no apt, no
 # coreutils. That's why there's no docker-entrypoint.sh: the "start adb
 # server" step now lives in main.rs (see `maybe_start_adb_server`), so the
-# container never needs a shell to boot.
-FROM gcr.io/distroless/cc-debian12
+# container never needs a shell to boot. The `:nonroot` variant runs as uid
+# 65532 with HOME=/home/nonroot; anything mounted for adb keys or bookmarks
+# must be writable by that uid.
+FROM gcr.io/distroless/cc-debian12:nonroot
 
 # `adb` is needed for ADB-server mode (the /adb-server endpoint relays to a local
 # adb server that does USB, mDNS discovery, and Android 11+ wireless pairing).
@@ -66,17 +68,20 @@ COPY --from=adb-fetch /usr/local/bin/adb /usr/local/bin/adb
 COPY --from=builder /app/target/release/adb-ws-proxy /usr/local/bin/adb-ws-proxy
 
 # Defaults; AUTH_TOKEN is required at runtime. Override ALLOWED_SUBNETS,
-# MAX_CONNECTIONS, ADB_SERVER_ADDR as needed. adb stores its keys under $HOME.
-# Set BOOKMARKS_PATH (e.g. /data/bookmarks.json, on a volume) to enable the
-# /bookmarks favorites store. Set START_ADB_SERVER=0 to skip starting the
-# in-container adb server (e.g. when ADB_SERVER_ADDR points at an external one).
+# MAX_CONNECTIONS, ADB_SERVER_ADDR as needed. adb stores its keys under
+# $HOME/.android. Set BOOKMARKS_PATH (e.g. /data/bookmarks.json, on a volume)
+# to enable the /bookmarks favorites store. Set START_ADB_SERVER=0 to skip
+# starting the in-container adb server (e.g. when ADB_SERVER_ADDR points at an
+# external one).
 ENV LISTEN_ADDR=0.0.0.0:8080 \
-    HOME=/root \
+    HOME=/home/nonroot \
     PATH=/usr/local/bin:/usr/bin:/bin
 EXPOSE 8080
 
 # adb-ws-proxy starts a local adb server (for /adb-server mode) itself before
-# serving. For ADB-server mode the container needs LAN line-of-sight to
-# devices (e.g. `--network host`) and a volume on /root/.android to persist
-# pairing keys.
+# serving, stops it again on SIGTERM, and exits promptly (`--init` is still
+# worth adding so the adb daemon gets reaped if it dies on its own). For
+# ADB-server mode the container needs LAN line-of-sight to devices (e.g.
+# `--network host`) and a volume on /home/nonroot/.android to persist pairing
+# keys.
 ENTRYPOINT ["/usr/local/bin/adb-ws-proxy"]

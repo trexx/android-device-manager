@@ -23,7 +23,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 use crate::{
-    Config, Request, authorized, origin_allowed, reject, reject_with_headers, write_response_full,
+    Config, HANDSHAKE_TIMEOUT, Request, authorized, origin_allowed, reject, reject_with_headers,
+    write_response_full,
 };
 
 /// Largest accepted `PUT /bookmarks` body. Generous: even hundreds of saved
@@ -164,9 +165,23 @@ async fn put(
     }
 
     // The head reader stopped exactly at the blank line, so the body is the
-    // next `length` bytes on the socket.
+    // next `length` bytes on the socket — bounded in time like the head.
     let mut body = vec![0u8; length];
-    stream.read_exact(&mut body).await?;
+    match tokio::time::timeout(HANDSHAKE_TIMEOUT, stream.read_exact(&mut body)).await {
+        Ok(read) => {
+            read?;
+        }
+        Err(_) => {
+            return reject_with_headers(
+                stream,
+                peer,
+                "408 Request Timeout",
+                cors,
+                "request body not received in time\n",
+            )
+            .await;
+        }
+    }
 
     if !looks_like_json_object(&body) {
         return reject_with_headers(
@@ -219,9 +234,14 @@ fn looks_like_json_object(body: &[u8]) -> bool {
     trimmed.starts_with('{') && trimmed.ends_with('}')
 }
 
+/// Serializes writers: two concurrent PUTs would otherwise race on the shared
+/// temp file name (one truncating what the other is about to rename).
+static STORE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Replace the document atomically: write a sibling temp file (same
 /// filesystem, so the rename can't cross a mount), fsync, rename over the old.
 async fn store(path: &Path, body: &[u8]) -> std::io::Result<()> {
+    let _guard = STORE_LOCK.lock().await;
     let mut tmp_name = path.file_name().unwrap_or_default().to_os_string();
     tmp_name.push(".tmp");
     let tmp = path.with_file_name(tmp_name);

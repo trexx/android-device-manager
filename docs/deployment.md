@@ -19,17 +19,40 @@ served over **HTTPS** (or `http://localhost` for local dev).
 
 ### Docker
 
-[`web/Dockerfile`](../web/Dockerfile) builds the static site and serves it with
-nginx:
+[`web/Dockerfile`](../web/Dockerfile) builds the static site into a **data-only
+image**: a `scratch` stage holding `dist/` at `/` and nothing else — no web
+server, no shell, no exposed port. Serve it from a container that can read that
+filesystem:
 
-```bash
-cd web
-docker build -t adm-web .
-docker run -p 8080:80 adm-web        # then front with TLS
-```
+- **Kubernetes `image` volume** — how the published
+  `ghcr.io/trexx/android-device-manager-web` image is meant to be used. Needs the
+  `image` volume source (beta since Kubernetes 1.33):
 
-The build needs network access (the `postinstall` hook fetches the scrcpy server
-binary from GitHub).
+  ```yaml
+  spec:
+    containers:
+      - name: web
+        image: busybox:stable
+        command: ["httpd", "-f", "-p", "8080", "-h", "/www"]
+        ports: [{ containerPort: 8080 }]
+        volumeMounts:
+          - { name: site, mountPath: /www, readOnly: true }
+    volumes:
+      - name: site
+        image:
+          reference: ghcr.io/trexx/android-device-manager-web:2.3.0
+          pullPolicy: IfNotPresent
+  ```
+
+- **Your own image:** `COPY --from=ghcr.io/trexx/android-device-manager-web:2.3.0 / /www`
+  in a Dockerfile based on any static server.
+- **Extract to the host:** `docker create --name adm-web ghcr.io/trexx/android-device-manager-web:2.3.0`
+  then `docker cp adm-web:/. ./site`, and serve `./site` with Caddy's
+  `file_server` or similar.
+
+Build locally with `cd web && docker build -t adm-web .` — the build needs
+network access (the `postinstall` hook fetches the scrcpy server binary from
+GitHub). Whatever serves the files must be fronted with TLS.
 
 ## Proxy
 
@@ -39,9 +62,10 @@ binary from GitHub).
 (so ADB-server mode works out of the box) by fetching a checksum-pinned
 official Google platform-tools release — not the distro package, which is too
 old to support Android 11+ wireless pairing. The runtime image is
-`distroless/cc` (glibc + libgcc only, no shell or package manager); the proxy
-binary itself starts the local adb server at boot (`START_ADB_SERVER`, below)
-before serving.
+`distroless/cc:nonroot` (glibc + libgcc only, no shell or package manager,
+running as uid 65532 with `HOME=/home/nonroot`); the proxy binary itself starts
+the local adb server at boot (`START_ADB_SERVER`, below) before serving, and
+stops it again on SIGTERM.
 
 ```bash
 cd proxy
@@ -60,17 +84,24 @@ LAN, and you'll want pairing keys to persist:
 ```bash
 docker run --network host \
   -e AUTH_TOKEN=secret \
-  -v adb-keys:/root/.android \
+  -v adb-keys:/home/nonroot/.android \
   --init \
   adb-ws-proxy
 ```
 
 - `--network host` — so the in-container adb can reach LAN devices (and mDNS).
-- `-v adb-keys:/root/.android` — persist the adb server's key across restarts (so
-  paired devices stay paired).
-- `--init` — reap the adb daemon if it exits.
+- `-v adb-keys:/home/nonroot/.android` — persist the adb server's key across
+  restarts (so paired devices stay paired). The container runs as uid 65532, so
+  a bind-mounted directory must be writable by that uid; a named volume is
+  initialised with the right owner.
+- `--init` — reap the adb daemon if it dies on its own. The proxy handles
+  SIGTERM itself (it stops the adb server it started and exits promptly), so
+  `docker stop` is quick either way.
 - `START_ADB_SERVER=0` — set if you point `ADB_SERVER_ADDR` at an external adb
   server instead of running one in the container.
+- USB devices passed into the container (`--device`) would additionally need to
+  be readable by uid 65532 (udev rule or `--group-add`); the wireless and mDNS
+  paths are unaffected.
 
 ## TLS
 
@@ -98,7 +129,7 @@ services:
       ALLOWED_SUBNETS: "192.168.0.0/16"
       # ADB_SERVER_ADDR: "127.0.0.1:5037"   # default; in-container adb server
     volumes:
-      - adb-keys:/root/.android
+      - adb-keys:/home/nonroot/.android
 
   web:
     build: ./web

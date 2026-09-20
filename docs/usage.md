@@ -84,7 +84,10 @@ connection then shows the on-device RSA prompt.
 ## Feature panels
 
 Each connected device has its own tab; switching tabs switches the active `Adb`.
-Panels are isolated per device.
+Panels are isolated per device, and they keep running when you switch to
+another panel or device: a shell session, a logcat stream, or a screen mirror
+is still there when you come back (Screen pauses decoding while hidden).
+Closing a device's tab ends its sessions.
 
 ### Device Info
 Manufacturer, model, Android version + SDK, serial, battery (level + charging
@@ -94,14 +97,17 @@ state), `/data` storage usage, and display resolution. Reads `getprop` plus
 ### Shell
 A full interactive shell (xterm.js) wired to a device PTY (`adb.subprocess`).
 Colors, cursor movement, and on-device tab completion work. Each device gets its
-own terminal; opening the panel starts a fresh session.
+own terminal; the session lasts until the device is disconnected.
 
 ### Files
-Browse the filesystem via `adb.sync()`. Click folders to navigate, use the
-breadcrumb / **Up** to go back. Per file: **download** (↓, saved by the browser)
-and **delete** (×, with confirm). **Upload** with the button or by dragging files
-onto the list. Starts at `/sdcard`; breadcrumb to `/` for elsewhere
-(permission-denied directories show an inline error).
+Browse the filesystem via `adb.sync`. Click folders to navigate, use the
+breadcrumb / **Up** to go back. Per file: **download** (↓ — on Chromium a save
+dialog streams the file straight to disk, so large files never sit in memory;
+other browsers buffer and download) and **delete** (×, with confirm). Symlinks
+resolve on click: a link to a directory opens it, a link to a file downloads it.
+**Upload** with the button or by dragging files onto the list. Starts at
+`/sdcard`; breadcrumb to `/` for elsewhere (permission-denied directories show
+an inline error).
 
 ### Apps
 List packages (**Third-party / System / All**) with live search. Expand a package
@@ -109,7 +115,8 @@ for details (`dumpsys package`: version, path, install/update times) and actions
 **Enable/Disable** (`pm enable` / `pm disable-user --user 0`, no confirm — it's
 reversible), **Force stop** (`am force-stop`), **Clear data** (`pm clear`,
 confirm), **Uninstall** (`pm uninstall`, confirm). **Install APK** pushes the file
-to a temp path and runs `pm install -r`.
+to a temp path and runs `pm install -r`. A non-zero exit or a `Failure […]` line
+from `pm` is shown as an error, not a success notice.
 
 ### Logcat
 Streams `logcat -v threadtime`, color-coded by level, into a virtualized list
@@ -120,8 +127,10 @@ bottom** resumes. The level dropdown is a client-side display filter — it chan
 nothing on the device.
 
 ### Screen (scrcpy)
-Live screen mirroring via `@yume-chan/adb-scrcpy` + the WebCodecs decoder. Pick
-**Resolution** and **Bitrate**, then **Start**. Controls: **touch** (click/drag
+Live screen mirroring via `@yume-chan/adb-scrcpy` + the WebCodecs decoder
+(scrcpy server 4.1). Pick **Resolution**, **Bitrate**, and **Codec** (H.264 by
+default; H.265, AV1, VP8, or VP9 if the device can encode them — an unsupported
+choice fails at start with the server's error), then **Start**. Controls: **touch** (click/drag
 on the canvas) and **keyboard** input, **Back / Home / Recents / Vol± / Power**,
 **Rotate**, and **Screenshot** (saves a PNG). Works over USB or the network /
 ADB-server transports.

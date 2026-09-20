@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   web:
-    name: Web (typecheck + build)
+    name: Web (typecheck + test + build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -31,6 +31,7 @@ jobs:
       # binary, so this step needs network access (CI has it).
       - run: npm ci
       - run: npm run typecheck
+      - run: npm test
       - run: npm run build
 
   proxy:

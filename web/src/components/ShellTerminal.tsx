@@ -1,13 +1,10 @@
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import type {
-  AdbNoneProtocolPtyProcess,
-  AdbShellProtocolPtyProcess,
-} from "@yume-chan/adb";
+import type { AdbNoneProtocolPty, AdbShellProtocolPty } from "@yume-chan/adb";
 import type { ConnectedDevice } from "../context/DeviceContext";
 
-type Pty = AdbShellProtocolPtyProcess | AdbNoneProtocolPtyProcess;
+type Pty = AdbShellProtocolPty | AdbNoneProtocolPty;
 type InputWriter = ReturnType<Pty["input"]["getWriter"]>;
 
 export function ShellTerminal({ device }: { device: ConnectedDevice }) {
@@ -32,11 +29,16 @@ export function ShellTerminal({ device }: { device: ConnectedDevice }) {
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(host);
-    fit.fit();
+    try {
+      fit.fit();
+    } catch {
+      // Host not laid out yet (e.g. mounted while hidden); the ResizeObserver
+      // below fits it once it has a size.
+    }
 
     let disposed = false;
     let pty: Pty | undefined;
-    let shellPty: AdbShellProtocolPtyProcess | undefined;
+    let shellPty: AdbShellProtocolPty | undefined;
     let writer: InputWriter | undefined;
     const encoder = new TextEncoder();
 

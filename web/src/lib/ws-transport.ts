@@ -2,7 +2,7 @@ import type { Adb, AdbDaemonConnection } from "@yume-chan/adb";
 import { AdbPacket, AdbPacketSerializeStream } from "@yume-chan/adb";
 import { StructDeserializeStream } from "@yume-chan/stream-extra";
 import { authenticate } from "./adb-manager";
-import { proxyBase } from "./proxy-url";
+import { proxyBase, tokenProtocol } from "./proxy-url";
 import { openWsByteDuplex } from "./ws-stream";
 
 export interface NetworkConnectionOptions {
@@ -16,11 +16,11 @@ export interface NetworkConnectionOptions {
   token: string;
 }
 
-function buildConnectUrl({ proxyUrl, host, port, token }: NetworkConnectionOptions): string {
+function buildConnectUrl({ proxyUrl, host, port }: NetworkConnectionOptions): string {
   const base = proxyBase(proxyUrl);
-  // Browsers can't set request headers on a WebSocket, so the token rides in
-  // the query string; URLSearchParams percent-encodes it for us.
-  const params = new URLSearchParams({ host, port: String(port), token });
+  // The token is NOT part of the URL: it travels as a subprotocol (see
+  // `tokenProtocol`), so it never lands in a reverse proxy's access log.
+  const params = new URLSearchParams({ host, port: String(port) });
   return `${base}/connect?${params.toString()}`;
 }
 
@@ -35,7 +35,9 @@ function buildConnectUrl({ proxyUrl, host, port, token }: NetworkConnectionOptio
  * is transport-agnostic and every panel works identically.
  */
 export async function connectNetwork(options: NetworkConnectionOptions): Promise<Adb> {
-  const duplex = await openWsByteDuplex(buildConnectUrl(options));
+  const duplex = await openWsByteDuplex(buildConnectUrl(options), [
+    tokenProtocol(options.token),
+  ]);
 
   // Outgoing ADB packets -> bytes -> WebSocket; incoming bytes -> ADB packets.
   const serializer = new AdbPacketSerializeStream();

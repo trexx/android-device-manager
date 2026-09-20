@@ -1,6 +1,6 @@
 import { AdbServerClient } from "@yume-chan/adb";
-import type { AdbIncomingSocketHandler } from "@yume-chan/adb";
-import { proxyBase } from "./proxy-url";
+import type { Adb } from "@yume-chan/adb";
+import { proxyBase, tokenProtocol } from "./proxy-url";
 import { openWsByteDuplex } from "./ws-stream";
 
 export interface AdbServerOptions {
@@ -10,10 +10,9 @@ export interface AdbServerOptions {
   token: string;
 }
 
-function buildServerUrl({ proxyUrl, token }: AdbServerOptions): string {
-  const base = proxyBase(proxyUrl);
-  const params = new URLSearchParams({ token });
-  return `${base}/adb-server?${params.toString()}`;
+function buildServerUrl({ proxyUrl }: AdbServerOptions): string {
+  // The token travels as a subprotocol (see `tokenProtocol`), not in the URL.
+  return `${proxyBase(proxyUrl)}/adb-server`;
 }
 
 /**
@@ -26,15 +25,17 @@ function buildServerUrl({ proxyUrl, token }: AdbServerOptions): string {
  */
 class WebSocketServerConnector implements AdbServerClient.ServerConnector {
   readonly #url: string;
+  readonly #protocols: string[];
 
-  constructor(url: string) {
+  constructor(url: string, protocols: string[]) {
     this.#url = url;
+    this.#protocols = protocols;
   }
 
   async connect(
     options?: AdbServerClient.ServerConnectionOptions,
   ): Promise<AdbServerClient.ServerConnection> {
-    const duplex = await openWsByteDuplex(this.#url);
+    const duplex = await openWsByteDuplex(this.#url, this.#protocols);
     if (options?.signal) {
       if (options.signal.aborted) {
         duplex.close();
@@ -54,7 +55,7 @@ class WebSocketServerConnector implements AdbServerClient.ServerConnector {
     };
   }
 
-  addReverseTunnel(_handler: AdbIncomingSocketHandler, _address?: string): never {
+  addReverseTunnel(_handler: Adb.IncomingSocketHandler, _address?: string): never {
     throw new Error("Reverse tunnels are not supported over the adb-server relay.");
   }
 
@@ -72,5 +73,7 @@ class WebSocketServerConnector implements AdbServerClient.ServerConnector {
  * yields a standard transport-agnostic `Adb`, so every panel works unchanged.
  */
 export function createServerClient(options: AdbServerOptions): AdbServerClient {
-  return new AdbServerClient(new WebSocketServerConnector(buildServerUrl(options)));
+  return new AdbServerClient(
+    new WebSocketServerConnector(buildServerUrl(options), [tokenProtocol(options.token)]),
+  );
 }

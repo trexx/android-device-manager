@@ -85,10 +85,13 @@ crypto**: the real `adb` performs the pairing.
 tokio-tungstenite). It does **not** parse ADB — it shuffles bytes between a
 WebSocket and a TCP socket. It exposes:
 
-- `GET /connect?host=<ip>&port=<port>&token=<token>` — relay to a device's
-  `adbd`, validated against a subnet allowlist.
-- `GET /adb-server?token=<token>` — relay to the configured adb server
-  (`ADB_SERVER_ADDR`, default `127.0.0.1:5037`).
+- `GET /connect?host=<ip>&port=<port>` — relay to a device's `adbd`, validated
+  against a subnet allowlist.
+- `GET /adb-server` — relay to the configured adb server (`ADB_SERVER_ADDR`,
+  default `127.0.0.1:5037`).
+
+Both upgrades carry the auth token as the WebSocket subprotocol
+`adm-token-<hex>` (see [proxy.md](./proxy.md#authentication)).
 - `GET /healthz`, `/readyz`, `/startupz` — unauthenticated Kubernetes probes.
 
 It is never an open relay: every upgrade needs a valid token; `/connect` targets
@@ -104,14 +107,18 @@ interface ConnectedDevice {
   id: string;        // serial or host:port
   label: string;
   adb: Adb;          // independent Adb instance
-  transport: AdbTransport;
   mode: "usb" | "network";
 }
 ```
 
-The tab bar switches the active device; panels are keyed by device id so each
-device keeps its own shell, file browser, logcat, scrcpy session, etc. A device
-is removed automatically when its `adb.disconnected` resolves (unplug / drop).
+The tab bar switches the active device. Each connected device gets its own
+workspace (tab strip + panels) that stays mounted while another device is
+active, and within a workspace a panel mounts on first open and then stays
+mounted but hidden — so a shell session, a logcat stream, or a mirror survives
+switching panels or devices. The Screen panel pauses decoding while hidden and
+resumes (replaying the frames buffered since the last keyframe) when shown. A
+device is removed automatically when its `adb.disconnected` resolves (unplug /
+drop), which unmounts its workspace and ends its sessions.
 
 ## Components map
 
@@ -123,14 +130,16 @@ web/src/
 │   ├── ws-stream.ts            # WebSocket ⇄ byte-duplex helper (backpressure)
 │   ├── ws-transport.ts         # network/daemon transport (/connect)
 │   ├── adb-server-transport.ts # AdbServerClient connector (/adb-server)
-│   ├── device-info.ts          # getprop / dumpsys / df parsing + runCommand
+│   ├── shell.ts                # runCommand / runChecked (one-shot commands, exit codes)
+│   ├── device-info.ts          # getprop / dumpsys / df parsing
 │   ├── file-browser.ts         # adb.sync() list/pull/push + rm
 │   ├── app-manager.ts          # pm / dumpsys / am
 │   ├── logcat.ts               # spawn logcat + threadtime parse
 │   └── scrcpy-client.ts        # push server, start session, video + control
 ├── context/DeviceContext.tsx
-├── components/                 # ConnectionManager, DeviceSwitcher, + one per panel
-└── App.tsx                     # layout + panel tabs
+├── components/                 # DeviceSwitcher + one per panel
+│   └── connection/             # landing sections: Proxy, Favorites, USB, Network, ADB server
+└── App.tsx                     # per-device workspaces (tab strip + persistent panels)
 
 proxy/src/main.rs               # listener, HTTP routing, WS handshake, relay
 ```

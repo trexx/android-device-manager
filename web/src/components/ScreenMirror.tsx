@@ -13,7 +13,12 @@ import {
   WebGLVideoFrameRenderer,
 } from "@yume-chan/scrcpy-decoder-webcodecs";
 import type { ConnectedDevice } from "../context/DeviceContext";
-import { startScrcpy, type ScrcpySession } from "../lib/scrcpy-client";
+import {
+  startScrcpy,
+  VIDEO_CODECS,
+  type ScrcpySession,
+  type VideoCodec,
+} from "../lib/scrcpy-client";
 
 const RESOLUTIONS = [
   { label: "Full", value: 0 },
@@ -27,6 +32,13 @@ const BITRATES = [
   { label: "2 Mbps", value: 2_000_000 },
   { label: "1 Mbps", value: 1_000_000 },
 ];
+const CODEC_LABELS: Record<VideoCodec, string> = {
+  h264: "H.264",
+  h265: "H.265",
+  av1: "AV1",
+  vp8: "VP8",
+  vp9: "VP9",
+};
 const KEY_MAP: Record<string, AndroidKeyCode> = {
   Enter: AndroidKeyCode.Enter,
   Backspace: AndroidKeyCode.Backspace,
@@ -143,7 +155,14 @@ function attachInput(canvas: HTMLCanvasElement, controller: ScrcpyControlMessage
   };
 }
 
-export function ScreenMirror({ device }: { device: ConnectedDevice }) {
+export function ScreenMirror({
+  device,
+  hidden = false,
+}: {
+  device: ConnectedDevice;
+  /** True while the panel is mounted but not visible (another tab or device). */
+  hidden?: boolean;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<ActiveSession | null>(null);
   const [running, setRunning] = useState(false);
@@ -151,6 +170,7 @@ export function ScreenMirror({ device }: { device: ConnectedDevice }) {
   const [error, setError] = useState<string | null>(null);
   const [maxSize, setMaxSize] = useState(1280);
   const [bitRate, setBitRate] = useState(4_000_000);
+  const [codec, setCodec] = useState<VideoCodec>("h264");
 
   const stop = useCallback(() => {
     const active = sessionRef.current;
@@ -170,6 +190,17 @@ export function ScreenMirror({ device }: { device: ConnectedDevice }) {
   // Stop the session when the panel unmounts.
   useEffect(() => stop, [stop]);
 
+  // Hidden (another tab or device is showing): pause decoding and rendering.
+  // The decoder buffers frames since the last keyframe and replays them on
+  // resume, so the picture comes back intact without burning decode time
+  // in the background.
+  useEffect(() => {
+    const decoder = sessionRef.current?.decoder;
+    if (!decoder) return;
+    if (hidden) decoder.pause();
+    else decoder.resume();
+  }, [hidden]);
+
   const start = useCallback(async () => {
     if (!WebCodecsVideoDecoder.isSupported) {
       setError(
@@ -180,13 +211,17 @@ export function ScreenMirror({ device }: { device: ConnectedDevice }) {
     setStarting(true);
     setError(null);
     try {
-      const session = await startScrcpy(device.adb, { maxSize, videoBitRate: bitRate });
+      const session = await startScrcpy(device.adb, {
+        maxSize,
+        videoBitRate: bitRate,
+        videoCodec: codec,
+      });
       const canvas = document.createElement("canvas");
       canvas.className = "sm-canvas";
       canvas.tabIndex = 0;
       const renderer = preferWebgl()
-        ? new WebGLVideoFrameRenderer(canvas)
-        : new BitmapVideoFrameRenderer(canvas);
+        ? new WebGLVideoFrameRenderer({ canvas })
+        : new BitmapVideoFrameRenderer({ canvas });
       const decoder = new WebCodecsVideoDecoder({
         codec: session.videoStream.metadata.codec,
         renderer,
@@ -200,15 +235,17 @@ export function ScreenMirror({ device }: { device: ConnectedDevice }) {
       hostRef.current?.appendChild(canvas);
       sessionRef.current = { session, decoder, canvas, detach };
       setRunning(true);
-      void session.exited.then(() => {
+      // Tear down on exit whether the server left cleanly or with an error.
+      const onExit = () => {
         if (sessionRef.current?.session === session) stop();
-      });
+      };
+      session.exited.then(onExit, onExit);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setStarting(false);
     }
-  }, [device, maxSize, bitRate, stop]);
+  }, [device, maxSize, bitRate, codec, stop]);
 
   const tapKey = useCallback((keyCode: AndroidKeyCode) => {
     const c = sessionRef.current?.session.controller;
@@ -263,6 +300,20 @@ export function ScreenMirror({ device }: { device: ConnectedDevice }) {
                 {BITRATES.map((b) => (
                   <option key={b.value} value={b.value}>
                     {b.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="lc-field">
+              <span>Codec</span>
+              <select
+                value={codec}
+                onChange={(e) => setCodec(e.target.value as VideoCodec)}
+                disabled={starting}
+              >
+                {VIDEO_CODECS.map((c) => (
+                  <option key={c} value={c}>
+                    {CODEC_LABELS[c]}
                   </option>
                 ))}
               </select>

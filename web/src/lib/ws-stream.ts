@@ -18,8 +18,15 @@ export interface WsByteDuplex {
   close(): void;
 }
 
-export async function openWsByteDuplex(url: string): Promise<WsByteDuplex> {
-  const ws = new WebSocket(url);
+/**
+ * `protocols` are offered as WebSocket subprotocols; the proxy's auth token
+ * rides there (see `tokenProtocol` in proxy-url.ts).
+ */
+export async function openWsByteDuplex(
+  url: string,
+  protocols?: string[],
+): Promise<WsByteDuplex> {
+  const ws = new WebSocket(url, protocols);
   ws.binaryType = "arraybuffer";
 
   await new Promise<void>((resolve, reject) => {
@@ -29,7 +36,11 @@ export async function openWsByteDuplex(url: string): Promise<WsByteDuplex> {
     };
     const onError = () => {
       cleanup();
-      reject(new Error(`Could not connect to ${url}. Check the URL, token, and that the proxy is reachable.`));
+      reject(
+        new Error(
+          `Could not connect to ${url}. Check the URL and token, that the proxy is reachable, and that it is version 2.3.0 or newer.`,
+        ),
+      );
     };
     const cleanup = () => {
       ws.removeEventListener("open", onOpen);

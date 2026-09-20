@@ -11,6 +11,7 @@ import {
 } from "../lib/logcat";
 
 const MAX_RECORDS = 5000; // ring buffer cap
+const TRIM_SLACK = 500; // how far past the cap the raw buffer may grow between flushes
 const ROW_H = 18; // px; must match .lc-row line-height
 const FLUSH_MS = 250; // batch UI updates
 const OVERSCAN = 12; // extra rows above/below the viewport
@@ -73,7 +74,10 @@ export function LogcatViewer({ device }: { device: ConnectedDevice }) {
             if (line.length === 0) continue;
             const records_ = bufferRef.current;
             records_.push(parseLogcatLine(line, idRef.current++));
-            if (records_.length > MAX_RECORDS) {
+            // Exact trimming happens at flush time; here only keep the buffer
+            // from growing without bound while paused or scrolled up (splice
+            // is O(n), so it is amortized rather than run per line).
+            if (records_.length > MAX_RECORDS + TRIM_SLACK) {
               records_.splice(0, records_.length - MAX_RECORDS);
             }
             dirtyRef.current = true;
@@ -90,6 +94,16 @@ export function LogcatViewer({ device }: { device: ConnectedDevice }) {
     };
   }, [device]);
 
+  // Publish the buffer to state: trim it to the cap, then snapshot it.
+  const flush = useCallback(() => {
+    const buffer = bufferRef.current;
+    if (buffer.length > MAX_RECORDS) {
+      buffer.splice(0, buffer.length - MAX_RECORDS);
+    }
+    dirtyRef.current = false;
+    setRecords(buffer.slice());
+  }, []);
+
   // Batch buffer -> state so a busy log doesn't re-render per line. The view is
   // frozen while paused OR while scrolled up — so incoming lines (and ring-buffer
   // trimming) never shift what you're reading. Lines keep accumulating in the
@@ -97,12 +111,11 @@ export function LogcatViewer({ device }: { device: ConnectedDevice }) {
   useEffect(() => {
     const timer = setInterval(() => {
       if (!pausedRef.current && autoScrollRef.current && dirtyRef.current) {
-        dirtyRef.current = false;
-        setRecords(bufferRef.current.slice());
+        flush();
       }
     }, FLUSH_MS);
     return () => clearInterval(timer);
-  }, []);
+  }, [flush]);
 
   // Track the viewport height for virtualization.
   useLayoutEffect(() => {
@@ -145,11 +158,8 @@ export function LogcatViewer({ device }: { device: ConnectedDevice }) {
     setAutoScroll(true);
     // Flush any lines buffered while scrolled up; the layout effect scrolls to
     // the new bottom once they render.
-    if (dirtyRef.current) {
-      dirtyRef.current = false;
-      setRecords(bufferRef.current.slice());
-    }
-  }, []);
+    if (dirtyRef.current) flush();
+  }, [flush]);
 
   const clear = useCallback(() => {
     bufferRef.current = [];

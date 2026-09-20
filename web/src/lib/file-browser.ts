@@ -1,8 +1,9 @@
-import type { Adb, AdbSyncEntry, AdbSyncWriteOptions } from "@yume-chan/adb";
+import type { Adb, AdbSync } from "@yume-chan/adb";
 import { LinuxFileType } from "@yume-chan/adb";
+import type { MaybeConsumable, ReadableStream, WritableStream } from "@yume-chan/stream-extra";
 
 export { LinuxFileType };
-export type { AdbSyncEntry };
+export type AdbSyncEntry = AdbSync.OpenDir.Entry;
 
 /** Whether an entry is a directory (or a symlink, which we let users try to enter). */
 export function isNavigable(entry: AdbSyncEntry): boolean {
@@ -22,51 +23,62 @@ export function parentPath(path: string): string {
 }
 
 /**
- * List a directory. A fresh sync session is opened and disposed per call —
- * simple and lifecycle-safe; each call is one ADB socket.
+ * List a directory. `adb.sync` is a service with a pooled set of sync sockets
+ * (Tango 3), so there is no per-call session to open or dispose.
  */
 export async function listDir(adb: Adb, path: string): Promise<AdbSyncEntry[]> {
-  const sync = await adb.sync();
-  try {
-    const entries = await sync.readdir(path);
-    return entries.filter((entry) => entry.name !== "." && entry.name !== "..");
-  } finally {
-    await sync.dispose();
-  }
+  const entries = await adb.sync.readdir(path);
+  return entries.filter((entry) => entry.name !== "." && entry.name !== "..");
 }
 
-/** Pull a file from the device and save it via the browser. */
+/** Whether `path` is a directory, following symlinks. */
+export function isDirectoryAt(adb: Adb, path: string): Promise<boolean> {
+  return adb.sync.isDirectory(path);
+}
+
+/**
+ * Pull a file from the device. On Chromium the File System Access API lets the
+ * transfer stream straight to disk, so a multi-gigabyte file never sits in
+ * memory; other browsers get the buffered Blob download. The save dialog must
+ * open before any other await so it still counts as the user's click.
+ */
 export async function downloadFile(adb: Adb, path: string, name: string): Promise<void> {
-  const sync = await adb.sync();
-  try {
-    const reader = sync.read(path).getReader();
-    const chunks: Uint8Array[] = [];
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) chunks.push(value);
+  if (window.showSaveFilePicker) {
+    let handle: FileSystemFileHandle;
+    try {
+      handle = await window.showSaveFilePicker({ suggestedName: name });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return; // dialog dismissed
+      throw e;
     }
-    saveBlob(new Blob(chunks as BlobPart[]), name);
-  } finally {
-    await sync.dispose();
+    const writable = await handle.createWritable();
+    // pipeTo closes the file on success (committing it) and aborts it on error
+    // (discarding the partial write), so nothing else to clean up here.
+    await adb.sync.read(path).pipeTo(writable as unknown as WritableStream<Uint8Array>);
+    return;
   }
+
+  const reader = adb.sync.read(path).getReader();
+  const chunks: Uint8Array[] = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) chunks.push(value);
+  }
+  saveBlob(new Blob(chunks as BlobPart[]), name);
 }
 
 /** Push a browser File into a device directory (overwrites if it exists). */
 export async function uploadFile(adb: Adb, dir: string, file: File): Promise<void> {
-  const sync = await adb.sync();
-  try {
-    await sync.write({
-      filename: joinPath(dir, file.name),
-      // A browser File's stream is a standard web ReadableStream<Uint8Array>;
-      // Tango consumes it as the byte source.
-      file: file.stream() as unknown as AdbSyncWriteOptions["file"],
-      permission: 0o644,
-      mtime: Math.floor(Date.now() / 1000),
-    });
-  } finally {
-    await sync.dispose();
-  }
+  await adb.sync.write({
+    path: joinPath(dir, file.name),
+    // A browser File's stream is a standard web ReadableStream<Uint8Array>;
+    // Tango consumes it as the byte source (plain chunks are valid
+    // MaybeConsumable chunks, the cast only bridges the type parameter).
+    readable: file.stream() as unknown as ReadableStream<MaybeConsumable<Uint8Array>>,
+    permission: 0o644,
+    mtime: Math.floor(Date.now() / 1000),
+  });
 }
 
 /** Delete a file or (recursively) a directory. */
