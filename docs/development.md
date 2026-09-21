@@ -9,7 +9,7 @@ npm install            # postinstall downloads the scrcpy server binary
 npm run dev            # dev server, http://localhost:5173
 npm run build          # tsc -b && vite build  ->  web/dist/
 npm run typecheck      # tsc -b
-npm test               # Vitest unit tests (parsers and pure helpers)
+npm test               # Vitest unit tests (parsers, pure helpers, key store)
 npm run preview        # serve the production build
 
 # Proxy (Rust, stable)
@@ -78,8 +78,9 @@ helper (with correct backpressure) used by the two network transports.
 `@yume-chan/{adb, adb-daemon-webusb, adb-credential-web, stream-extra, scrcpy,
 adb-scrcpy, scrcpy-decoder-webcodecs, fetch-scrcpy-server}` (the last one
 downloads the scrcpy server binary at install and exports its URL + version).
-**Web dev:** `vite`, `@vitejs/plugin-react`, `typescript`, `@types/*`, `vitest`
-(dev-only; runs in CI).
+**Web dev:** `vite`, `@vitejs/plugin-react`, `typescript`, `@types/*`, `vitest`,
+`fake-indexeddb` (in-memory IndexedDB for the key-store tests). All dev-only;
+tests run in CI.
 **Proxy:** `tokio`, `tokio-tungstenite`, `futures-util`.
 
 ## Gotchas
@@ -117,10 +118,10 @@ downloads the scrcpy server binary at install and exports its URL + version).
   store `Authentication`, `{ privateKey, name }` records, auto-increment keys)
   and migrates Tango 2's version-1 layout (bare key bytes) in place, so earlier
   authorizations survive and going back to Tango's storage is a one-line change
-  in `adb-manager.ts` once a fixed release exists. `key-storage.ts` has no
-  in-repo unit test (IndexedDB needs a shim such as `fake-indexeddb`, a dev
-  dependency we haven't taken); verify it in a browser: connect, accept the
-  prompt, reload, reconnect — no second prompt.
+  in `adb-manager.ts` once a fixed release exists. `key-storage.test.ts` covers
+  it against `fake-indexeddb` (fresh origin, round trips, the version-1
+  migration, early exit from `load()`); after a Tango bump still verify in a
+  browser: connect, accept the prompt, reload, reconnect — no second prompt.
 - `adb.sync` is a **pooled service property** (`adb.sync.readdir/read/write/
   isDirectory`), not a factory; there is nothing to dispose per call.
 - Subprocess: `adb.subprocess.shellProtocol.spawn(cmd).wait().toString()` →
@@ -156,6 +157,6 @@ All planned phases are implemented and verified on real hardware: USB, network
 (`adb tcpip`), and ADB-server mode with wireless pairing; Device Info, Shell,
 Files, Apps, Logcat, and Screen mirror. Pure parsing and helper logic (the
 logcat/`dumpsys`/`df` parsers, package-id validation, path and URL helpers, the
-proxy-config migration) has Vitest unit tests (`npm test`, `src/**/*.test.ts`,
-run in CI); everything that touches a device is validated by hand against real
-hardware.
+proxy-config migration) and the IndexedDB key store (against `fake-indexeddb`)
+have Vitest unit tests (`npm test`, `src/**/*.test.ts`, run in CI); everything
+that touches a device is validated by hand against real hardware.

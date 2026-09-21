@@ -49,8 +49,9 @@ export default defineConfig({
     ],
   },
   test: {
-    // Pure parsers and helpers only; anything touching a device is verified
-    // by hand against real hardware (see docs/development.md).
+    // Pure parsers and helpers, plus the IndexedDB key store (against
+    // fake-indexeddb); anything touching a device is verified by hand against
+    // real hardware (see docs/development.md).
     include: ["src/**/*.test.ts"],
     environment: "node",
   },
