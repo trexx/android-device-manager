@@ -41,7 +41,9 @@ docs/                   # this documentation
 ```
 
 The transport layer is split so a single `Adb` works everywhere:
-`lib/adb-manager.ts` owns the shared RSA credential store and `authenticate()`;
+`lib/adb-manager.ts` owns the shared RSA credential store (backed by
+`lib/key-storage.ts`, our own IndexedDB key store — see the Tango 3 notes) and
+`authenticate()`;
 `lib/usb-transport.ts`, `lib/ws-transport.ts`, and `lib/adb-server-transport.ts`
 each produce an `Adb`. `lib/ws-stream.ts` is the shared WebSocket⇄byte-duplex
 helper (with correct backpressure) used by the two network transports.
@@ -104,8 +106,21 @@ downloads the scrcpy server binary at install and exports its URL + version).
 
 **Tango 3 API notes** (things that changed from 2.x and are easy to misremember)
 - Auth: `adbDaemonAuthenticate({ serial, connection, credentialManager })` with
-  `AdbWebCryptoCredentialManager(new TangoIndexedDbStorage(), name)`. The storage
-  migrates keys from Tango 2's IndexedDB layout, so earlier authorizations survive.
+  `AdbWebCryptoCredentialManager(storage, name)`. The storage is **our own**
+  `lib/key-storage.ts` (`IndexedDbKeyStorage`), not Tango's
+  `TangoIndexedDbStorage`: in 3.0.0-beta.3 that class's `load()` returns a
+  promise from the callback of its transaction helper, which the helper rejects
+  (`callback must not be an async function`, plus a stray `AbortError` from the
+  orphaned request), so every connect failed at auth. It also caches one
+  connection and closes it after each use. Upstream `main` still had both bugs
+  on 2026-09-21. Ours writes the identical layout (database `Tango` version 2,
+  store `Authentication`, `{ privateKey, name }` records, auto-increment keys)
+  and migrates Tango 2's version-1 layout (bare key bytes) in place, so earlier
+  authorizations survive and going back to Tango's storage is a one-line change
+  in `adb-manager.ts` once a fixed release exists. `key-storage.ts` has no
+  in-repo unit test (IndexedDB needs a shim such as `fake-indexeddb`, a dev
+  dependency we haven't taken); verify it in a browser: connect, accept the
+  prompt, reload, reconnect — no second prompt.
 - `adb.sync` is a **pooled service property** (`adb.sync.readdir/read/write/
   isDirectory`), not a factory; there is nothing to dispose per call.
 - Subprocess: `adb.subprocess.shellProtocol.spawn(cmd).wait().toString()` →
