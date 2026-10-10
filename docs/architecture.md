@@ -48,7 +48,7 @@ ADB-server connections are interchangeable.
 `AdbDaemonWebUsbDeviceManager.BROWSER.requestDevice()` prompts the user to pick a
 device; `device.connect()` yields a raw ADB packet stream that
 `adbDaemonAuthenticate({ serial, connection, credentialManager })` turns into an
-`Adb`. The RSA credential (in IndexedDB, via our own `lib/key-storage.ts`) is
+`Adb`. The RSA credential (in IndexedDB, via Tango's `TangoIndexedDbStorage`) is
 shared with the network transport.
 
 ### Network / daemon (`/connect`)
@@ -126,7 +126,6 @@ drop), which unmounts its workspace and ends its sessions.
 web/src/
 ├── lib/
 │   ├── adb-manager.ts          # shared RSA credential store + authenticate()
-│   ├── key-storage.ts          # IndexedDB RSA key store (replaces Tango's, see development.md)
 │   ├── usb-transport.ts        # WebUSB connect
 │   ├── ws-stream.ts            # WebSocket ⇄ byte-duplex helper (backpressure)
 │   ├── ws-transport.ts         # network/daemon transport (/connect)
