@@ -21,8 +21,8 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      - uses: trexx/actions/.github/actions/checkout@shared-steps
+      - uses: trexx/actions/.github/actions/setup-node@shared-steps
         with:
           node-version: 26
           cache: npm
@@ -36,20 +36,11 @@ jobs:
 
   proxy:
     name: Proxy (fmt + clippy + test + build)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: proxy
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          workspaces: proxy
-      - run: cargo fmt --all --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
-      - run: cargo build --release
+    uses: 'trexx/actions/.github/workflows/rust-check.yml@shared-steps'
+    permissions:
+      contents: read
+    with:
+      os: '["ubuntu-latest"]'
+      working_directory: proxy
+      cargo_args: ''
+      build_release: true
