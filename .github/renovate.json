@@ -2,10 +2,6 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["github>trexx/actions"],
   "labels": ["dependencies"],
-  "lockFileMaintenance": {
-    "enabled": true,
-    "automerge": true
-  },
   "vulnerabilityAlerts": {
     "labels": ["dependencies", "security"]
   },
@@ -21,6 +17,11 @@
     }
   ],
   "packageRules": [
+    {
+      "description": "Automerge only what the rules below allow; everything else is reviewed by hand. Overrides the shared preset, which automerges digest, minor and patch updates.",
+      "matchPackageNames": ["*"],
+      "automerge": false
+    },
     {
       "description": "Tango isn't API-stable: group all @yume-chan/* together, keep exact pins, and always review by hand (read the .d.ts before merging).",
       "matchPackageNames": ["@yume-chan/*"],
