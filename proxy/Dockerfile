@@ -41,6 +41,8 @@ ARG PLATFORM_TOOLS_SHA256=d230f13842f60f782a8645f9c813f8f845bf36089ea7289f28c48f
 # and bookworm's adb predates `host:pair` (added in platform-tools 30.0.0
 # alongside Android 11 wireless debugging) — pairing fails with "unknown host
 # service" against a pre-30.0.0 adb (reproduced with Debian's package, v29.0.6).
+# pipefail: a failed checksum must fail the RUN, not just the last command of the pipe.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates unzip \
     && curl -fsSL -o /tmp/platform-tools.zip \
