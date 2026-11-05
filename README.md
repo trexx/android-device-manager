@@ -1,6 +1,6 @@
 # Android Device Manager
 
-A static web UI for managing Android devices over ADB, built on the
+A web based Android debugging utility. A static web UI for managing Android devices over ADB, built on the
 [Tango](https://github.com/yume-chan/ya-webadb) library. Works over direct USB
 (WebUSB) and over the network via a Rust WebSocket-to-TCP proxy. Manages multiple
 devices at once.
@@ -9,7 +9,9 @@ See [`docs/`](./docs) for full documentation — [architecture](./docs/architect
 [usage](./docs/usage.md), the [proxy](./docs/proxy.md),
 [deployment](./docs/deployment.md), and [development](./docs/development.md).
 
-## Status
+## Overview
+
+### Status
 
 All planned phases are implemented — **Phase 1** (USB + Shell + Device Info),
 **Phase 2** (network transport: Rust proxy + WebSocket), **Phase 3** (File
@@ -42,13 +44,15 @@ Browser), **Phase 4** (App Manager), **Phase 5** (Logcat), and **Phase 6**
 > device needs network access during `npm install`. Screen mirror needs WebCodecs
 > (Chromium 94+).
 
-## Components
+### Components
 
 - `web/`   — Static site (Vite + React + TypeScript). The device manager UI.
 - `proxy/` — Rust WebSocket-to-TCP relay (Tokio + tokio-tungstenite) for the
   network transport.
 
-## Web UI
+## Usage
+
+### Web UI
 
 Requirements: **Node** `^20.19.0 || >=22.12.0`. USB needs a **Chromium-based
 browser** (Chrome, Edge) over **HTTPS or `http://localhost`**; the network path
@@ -74,7 +78,7 @@ is never sent to any server.
   the proxy (below), fill in the proxy URL + token once in the **Proxy**
   section, then the device IP and port.
 
-## Proxy
+### Proxy
 
 The proxy is a stateless byte relay: it validates an auth token, checks the
 target IP against a subnet allowlist, opens a TCP connection to the device's
@@ -88,18 +92,7 @@ AUTH_TOKEN=secret ALLOWED_SUBNETS=192.168.0.0/16,10.0.0.0/8 \
   ./target/release/adb-ws-proxy
 ```
 
-Configuration (environment variables):
-
-| Variable | Default | Notes |
-|---|---|---|
-| `LISTEN_ADDR` | `0.0.0.0:8080` | Address to bind. |
-| `AUTH_TOKEN` | _(required)_ | Refuses to start if unset/empty. |
-| `ALLOWED_SUBNETS` | `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` | Comma-separated CIDRs. Targets must be IP literals inside one of these. |
-| `MAX_CONNECTIONS` | `20` | Concurrent relay cap (`/readyz` reports 503 at capacity). Server mode opens one connection per ADB socket, so size accordingly. |
-| `ALLOWED_ORIGIN` | _(unset = any)_ | Comma-separated origins; if set, the WebSocket `Origin` must match. |
-| `ADB_SERVER_ADDR` | `127.0.0.1:5037` | Target for the `/adb-server` endpoint (the local `adb` server). |
-| `BOOKMARKS_PATH` | _(unset = disabled)_ | File where `/bookmarks` persists the UI's saved devices, so favorites roam across browsers. |
-| `START_ADB_SERVER` | `1` | Run `adb start-server` at boot for ADB-server mode; set `0` when `ADB_SERVER_ADDR` points at an external server. |
+The proxy's environment variables are listed under [Configuration](#configuration).
 
 Endpoints: `GET /connect?host=<ip>&port=<port>` (direct-to-`adbd` WebSocket
 relay), `GET /adb-server` (relay to the configured `adb` server — see below),
@@ -119,7 +112,7 @@ docker build -t adb-ws-proxy .
 docker run -p 8080:8080 -e AUTH_TOKEN=secret adb-ws-proxy
 ```
 
-### ADB server mode (`/adb-server`)
+#### ADB server mode (`/adb-server`)
 
 For Android 11+ **Wireless debugging** (pairing) — and to let a real `adb` do USB
 and mDNS discovery — run an `adb` server on the proxy host and use the UI's **ADB
@@ -143,3 +136,30 @@ browser.
 > device it manages. The relay only ever targets the fixed `ADB_SERVER_ADDR`;
 > keep the token secret, serve over `wss://`, and treat the adb-server host as a
 > trusted control point. Subnet/origin allowlists don't apply to this endpoint.
+
+## Configuration
+
+The proxy is configured through environment variables:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `LISTEN_ADDR` | `0.0.0.0:8080` | Address to bind. |
+| `AUTH_TOKEN` | _(required)_ | Refuses to start if unset/empty. |
+| `ALLOWED_SUBNETS` | `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` | Comma-separated CIDRs. Targets must be IP literals inside one of these. |
+| `MAX_CONNECTIONS` | `20` | Concurrent relay cap (`/readyz` reports 503 at capacity). Server mode opens one connection per ADB socket, so size accordingly. |
+| `ALLOWED_ORIGIN` | _(unset = any)_ | Comma-separated origins; if set, the WebSocket `Origin` must match. |
+| `ADB_SERVER_ADDR` | `127.0.0.1:5037` | Target for the `/adb-server` endpoint (the local `adb` server). |
+| `BOOKMARKS_PATH` | _(unset = disabled)_ | File where `/bookmarks` persists the UI's saved devices, so favorites roam across browsers. |
+| `START_ADB_SERVER` | `1` | Run `adb start-server` at boot for ADB-server mode; set `0` when `ADB_SERVER_ADDR` points at an external server. |
+
+## Development
+
+The web UI's dev server, build, type-check and test commands are listed under [Web UI](#web-ui), and building the proxy under [Proxy](#proxy). See [docs/development.md](./docs/development.md) for more.
+
+### CI
+
+On pushes to `main` and on pull requests, `.github/workflows/ci.yml` runs `npm ci`, `npm run typecheck`, `npm test` and `npm run build` in `web/` on Node 26 (`npm ci` downloads the scrcpy server, so it needs network access), and `cargo fmt --check`, `cargo clippy` (warnings are errors), `cargo test` and `cargo build --release` in `proxy/`.
+
+## Releases
+
+Pushing a version tag (`*.*.*`) runs `.github/workflows/build.yml`, which builds two images and pushes them to ghcr.io, tagged with the version and `latest`: `ghcr.io/trexx/android-device-manager-web` from `web/` and `ghcr.io/trexx/android-device-manager-proxy` from `proxy/`.
