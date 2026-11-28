@@ -4,7 +4,7 @@
 # of the distroless runtime stage's — distroless/cc-debian12 is bookworm-based
 # (glibc 2.36); a binary built against a newer glibc (e.g. trixie's 2.39)
 # fails to start there with "version `GLIBC_2.39' not found".
-FROM rust:1-slim-bookworm AS builder
+FROM rust:1-slim-bookworm@sha256:bb875b0f8ce726053e259034848c471840e96bfe591fd52556178ae9a05e6126 AS builder
 WORKDIR /app
 
 # Cache dependencies separately from source for faster rebuilds.
@@ -22,7 +22,7 @@ RUN touch src/main.rs && cargo build --release
 # release, isolated in its own stage so the curl/unzip/apt tooling used to get
 # it never ends up in the runtime image — only the extracted binary is copied
 # out below.
-FROM debian:bookworm-slim AS adb-fetch
+FROM debian:bookworm-slim@sha256:e67eeead736ff7bbe258ef088bff683635c561b1fcfefad0806c1df4ab49ce0e AS adb-fetch
 
 # Pinned platform-tools release (adb 37.0.1 as of 2026-08 — informational;
 # the SHA256 below is what's actually verified). Google doesn't publish
@@ -58,7 +58,7 @@ RUN apt-get update \
 # container never needs a shell to boot. The `:nonroot` variant runs as uid
 # 65532 with HOME=/home/nonroot; anything mounted for adb keys or bookmarks
 # must be writable by that uid.
-FROM gcr.io/distroless/cc-debian12:nonroot
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f
 
 # `adb` is needed for ADB-server mode (the /adb-server endpoint relays to a local
 # adb server that does USB, mDNS discovery, and Android 11+ wireless pairing).
